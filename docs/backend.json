@@ -1,0 +1,474 @@
+{
+  "entities": {
+    "Branch": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Branch",
+      "type": "object",
+      "description": "Represents an operational branch within the DuesFlow system, enabling multi-branch management and reporting.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Branch entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The official name of the branch."
+        },
+        "address": {
+          "type": "string",
+          "description": "The physical address of the branch."
+        },
+        "contactPerson": {
+          "type": "string",
+          "description": "The name of the primary contact person for this branch."
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "The email address of the primary contact person for this branch.",
+          "format": "email"
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "The phone number of the primary contact person for this branch."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the branch record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the branch record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Supplier": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Supplier",
+      "type": "object",
+      "description": "Manages profiles and default settings for suppliers, including contact information and credit periods.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Supplier entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the supplier."
+        },
+        "contactPerson": {
+          "type": "string",
+          "description": "The name of the primary contact person at the supplier."
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "The email address of the primary contact person at the supplier.",
+          "format": "email"
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "The phone number of the primary contact person at the supplier."
+        },
+        "address": {
+          "type": "string",
+          "description": "The physical address of the supplier."
+        },
+        "defaultCreditDays": {
+          "type": "number",
+          "description": "The default number of credit days offered by this supplier."
+        },
+        "category": {
+          "type": "string",
+          "description": "A category or type for the supplier (e.g., Raw Materials, Services)."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the supplier record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the supplier record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "defaultCreditDays",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Invoice": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Invoice",
+      "type": "object",
+      "description": "Stores details of each purchase invoice, including imported opening balances, for tracking payments and due dates.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Invoice entity."
+        },
+        "branchId": {
+          "type": "string",
+          "description": "Reference to the Branch where this invoice was issued. (Relationship: Branch 1:N Invoice)"
+        },
+        "supplierId": {
+          "type": "string",
+          "description": "Reference to the Supplier from whom this invoice was received. (Relationship: Supplier 1:N Invoice)"
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "description": "The unique invoice number provided by the supplier (e.g., from Tally)."
+        },
+        "invoiceDate": {
+          "type": "string",
+          "description": "The date when the invoice was issued.",
+          "format": "date"
+        },
+        "invoiceAmount": {
+          "type": "number",
+          "description": "The total original amount of the invoice."
+        },
+        "creditDays": {
+          "type": "number",
+          "description": "The number of credit days applicable to this invoice."
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "The calculated due date for this invoice (invoiceDate + creditDays).",
+          "format": "date"
+        },
+        "remainingBalance": {
+          "type": "number",
+          "description": "The current outstanding amount remaining to be paid for this invoice."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current payment status of the invoice (e.g., 'Pending', 'Partially Paid', 'Paid', 'Overdue')."
+        },
+        "isOpeningBalance": {
+          "type": "boolean",
+          "description": "Indicates if this invoice represents an initial opening balance entry."
+        },
+        "uploadedAt": {
+          "type": "string",
+          "description": "Timestamp when the invoice data was first uploaded into the system.",
+          "format": "date-time"
+        },
+        "uploadedByUserId": {
+          "type": "string",
+          "description": "Reference to the user ID (from external auth system) who uploaded this invoice."
+        }
+      },
+      "required": [
+        "id",
+        "branchId",
+        "supplierId",
+        "invoiceNumber",
+        "invoiceDate",
+        "invoiceAmount",
+        "creditDays",
+        "dueDate",
+        "remainingBalance",
+        "status",
+        "isOpeningBalance",
+        "uploadedAt",
+        "uploadedByUserId"
+      ]
+    },
+    "Payment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Payment",
+      "type": "object",
+      "description": "Records individual payments made and how they are allocated across one or more invoices.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Payment entity."
+        },
+        "paymentDate": {
+          "type": "string",
+          "description": "The date on which the payment was made.",
+          "format": "date"
+        },
+        "amountPaid": {
+          "type": "number",
+          "description": "The total amount of this single payment."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method used for the payment (e.g., 'Bank Transfer', 'Cheque')."
+        },
+        "referenceNumber": {
+          "type": "string",
+          "description": "A transaction reference number or cheque number for the payment."
+        },
+        "paidByUserId": {
+          "type": "string",
+          "description": "Reference to the user ID (from external auth system) who recorded this payment."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the payment record was created.",
+          "format": "date-time"
+        },
+        "invoiceAllocations": {
+          "type": "array",
+          "description": "An array detailing how this payment amount was distributed among different invoices. (Relationship: Payment 1:N InvoiceAllocation)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "paymentDate",
+        "amountPaid",
+        "paidByUserId",
+        "createdAt",
+        "invoiceAllocations"
+      ]
+    },
+    "InvoiceAllocation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "InvoiceAllocation",
+      "type": "object",
+      "description": "Represents a specific portion of a payment applied to a single invoice, crucial for partial payment tracking.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the InvoiceAllocation entity."
+        },
+        "paymentId": {
+          "type": "string",
+          "description": "Reference to the Payment entity this allocation belongs to. (Relationship: Payment 1:N InvoiceAllocation)"
+        },
+        "invoiceId": {
+          "type": "string",
+          "description": "Reference to the Invoice entity this payment portion was applied to. (Relationship: Invoice 1:N InvoiceAllocation)"
+        },
+        "amountApplied": {
+          "type": "number",
+          "description": "The specific amount from the payment that was applied to this invoice."
+        },
+        "allocatedAt": {
+          "type": "string",
+          "description": "Timestamp when this allocation was recorded.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "paymentId",
+        "invoiceId",
+        "amountApplied",
+        "allocatedAt"
+      ]
+    },
+    "DashboardStatistic": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "DashboardStatistic",
+      "type": "object",
+      "description": "Stores pre-aggregated financial statistics for quick retrieval and display on the dashboard, either globally or per branch.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the DashboardStatistic entity. Can be a specific branchId for branch-level stats or a fixed ID for global stats (e.g., 'global_stats')."
+        },
+        "branchId": {
+          "type": "string",
+          "description": "Optional reference to the Branch these statistics pertain to. Null for global statistics. (Relationship: Branch 1:1 DashboardStatistic)"
+        },
+        "totalOutstanding": {
+          "type": "number",
+          "description": "The total sum of all remaining balances for invoices."
+        },
+        "totalOverdue": {
+          "type": "number",
+          "description": "The total sum of remaining balances for all overdue invoices."
+        },
+        "upcomingDues0To7Days": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices due in the next 0 to 7 days."
+        },
+        "upcomingDues8To15Days": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices due in the next 8 to 15 days."
+        },
+        "upcomingDues16To30Days": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices due in the next 16 to 30 days."
+        },
+        "aging0To30DaysOverdue": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices that are 0-30 days overdue."
+        },
+        "aging31To60DaysOverdue": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices that are 31-60 days overdue."
+        },
+        "aging60PlusDaysOverdue": {
+          "type": "number",
+          "description": "The total sum of remaining balances for invoices that are 60+ days overdue."
+        },
+        "lastUpdatedAt": {
+          "type": "string",
+          "description": "Timestamp when these dashboard statistics were last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "totalOutstanding",
+        "totalOverdue",
+        "upcomingDues0To7Days",
+        "upcomingDues8To15Days",
+        "upcomingDues16To30Days",
+        "aging0To30DaysOverdue",
+        "aging31To60DaysOverdue",
+        "aging60PlusDaysOverdue",
+        "lastUpdatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/branches/{branchId}",
+        "definition": {
+          "entityName": "Branch",
+          "schema": {
+            "$ref": "#/backend/entities/Branch"
+          },
+          "description": "Top-level collection for managing operational branch profiles. Access is typically restricted to global administrators for creation/updates, and to authorized finance team/branch managers for read operations. Includes `branchId` as a path parameter."
+        }
+      },
+      {
+        "path": "/suppliers/{supplierId}",
+        "definition": {
+          "entityName": "Supplier",
+          "schema": {
+            "$ref": "#/backend/entities/Supplier"
+          },
+          "description": "Top-level collection for managing supplier profiles. Access is typically restricted to global administrators for creation/updates, and to authorized finance team/branch managers for read operations. Includes `supplierId` as a path parameter."
+        }
+      },
+      {
+        "path": "/invoices/{invoiceId}",
+        "definition": {
+          "entityName": "Invoice",
+          "schema": {
+            "$ref": "#/backend/entities/Invoice"
+          },
+          "description": "Central collection for all purchase invoices. Each document includes denormalized `branchId`, `supplierId`, and `uploadedByUserId` for Authorization Independence. Access is granted to users with `branchMemberships` to the invoice's `branchId` or global finance/admin roles.",
+          "params": [
+            {
+              "name": "invoiceId",
+              "description": "The unique identifier for the Invoice document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/payments/{paymentId}",
+        "definition": {
+          "entityName": "Payment",
+          "schema": {
+            "$ref": "#/backend/entities/Payment"
+          },
+          "description": "Records individual payments. Each document must include denormalized `branchId` (from the context of the related invoices) and `paidByUserId` for Authorization Independence. Note: `branchId` is crucial for authorization and should be explicitly added to the Payment schema. Access is granted to users with `branchMemberships` to the payment's `branchId` or global finance/admin roles.",
+          "params": [
+            {
+              "name": "paymentId",
+              "description": "The unique identifier for the Payment document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/invoiceAllocations/{allocationId}",
+        "definition": {
+          "entityName": "InvoiceAllocation",
+          "schema": {
+            "$ref": "#/backend/entities/InvoiceAllocation"
+          },
+          "description": "Represents how a payment is applied to a specific invoice. Each document must include denormalized `branchId` (from the associated invoice) for Authorization Independence. Note: `branchId` is crucial for authorization and should be explicitly added to the InvoiceAllocation schema. Access is granted to users with `branchMemberships` to the allocation's `branchId` or global finance/admin roles.",
+          "params": [
+            {
+              "name": "allocationId",
+              "description": "The unique identifier for the InvoiceAllocation document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/dashboardStatistics/{statisticId}",
+        "definition": {
+          "entityName": "DashboardStatistic",
+          "schema": {
+            "$ref": "#/backend/entities/DashboardStatistic"
+          },
+          "description": "Stores pre-aggregated financial statistics. Document `statisticId` can be 'global' for system-wide stats or a specific `branchId` for branch-level stats. Access is controlled based on the `statisticId`: global roles for 'global', and `branchMemberships` for branch-specific IDs.",
+          "params": [
+            {
+              "name": "statisticId",
+              "description": "Identifier for the statistic document (e.g., 'global' or a specific branch ID)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/adminUsers/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Dedicated collection to identify global administrators. The existence of a document at `userId` confirms global admin status, allowing for simple `exists()` checks in security rules. (Assumes a 'User' entity exists in the backend for schema referencing.)"
+        }
+      },
+      {
+        "path": "/financeTeamUsers/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Dedicated collection to identify members of the global finance team. The existence of a document at `userId` confirms global finance team status, allowing for simple `exists()` checks in security rules. (Assumes a 'User' entity exists in the backend for schema referencing.)"
+        }
+      },
+      {
+        "path": "/branchMemberships/{branchId}_{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Dedicated collection for user-to-branch access control. The existence of a document with ID `{branchId}_{userId}` grants `userId` access to `branchId`. Used for `exists()` checks in security rules to ensure Authorization Independence for branch-specific data. (Assumes a 'User' entity exists in the backend for schema referencing, as BranchMembership is an implicit entity.)",
+          "params": [
+            {
+              "name": "branchId_userId",
+              "description": "Composite identifier for the branch membership, combining the branch ID and the user ID."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure for DuesFlow is designed with paramount focus on Authorization Independence, Structural Segregation, and clear Access Modeling, as mandated. \n\n**Authorization Independence (CRITICAL):** To eliminate hierarchical authorization dependencies (`get()`) in security rules and support atomic operations, authorization contexts are denormalized where necessary. \n\n*   For `Invoice` documents, `branchId`, `supplierId`, and `uploadedByUserId` are directly embedded. This allows rules to check `resource.data.branchId` (or `uploadedByUserId`) against the requesting user's permissions without needing to fetch parent `Branch` or `Supplier` documents.\n*   Similarly, for `Payment` and `InvoiceAllocation` documents, `branchId` (denormalized from the associated branch context) and `paidByUserId` are explicitly included (though 'branchId' needs to be explicitly added to their schemas). This ensures that a payment record or allocation can be validated against the user's branch permissions without costly or insecure `get()` operations.\n\n*   Crucially, user-to-branch access is managed through a dedicated `branchMemberships` collection. Instead of using `get()` on a user's profile to find their branches, or on a branch document to find its members, a document at `/branchMemberships/{branchId}_{userId}` acts as a 'permission slip'. A security rule can simply use `exists(/branchMemberships/$(branchId)_$(request.auth.uid))` to verify a user's access to a specific branch, satisfying the 'Authorization Independence' mandate for branch-level access control.\n*   Global roles (admin, finance team) are similarly managed via dedicated top-level collections (`adminUsers`, `financeTeamUsers`), enabling simple `exists()` checks in rules without relying on user profile `get()` calls for global permissions.\n\n**Structural Segregation (Homogeneous Security Posture):** Each collection is designed to hold documents with a uniform security posture, simplifying security rules. \n\n*   `branches` and `suppliers` are global entities managed by administrators.\n*   `invoices`, `payments`, and `invoiceAllocations` are central collections, but access is filtered by the denormalized `branchId` and `uploadedByUserId`/`paidByUserId` based on the user's `branchMemberships`. This avoids mixing publicly accessible data with private data within the same collection. \n*   `dashboardStatistics` is segregated by document ID into global statistics (`id: 'global'`) and branch-specific statistics (`id: '{branchId}'`), allowing different access rules.\n\n**QAPs (Rules are not Filters):** The structure fully supports secure `list` operations.\n\n*   For `invoices`, `payments`, and `invoiceAllocations`, queries can include `where('branchId', '==', 'userSelectedBranchId')`. Firebase security rules then validate that `request.auth.uid` indeed has permission for `userSelectedBranchId` by checking `exists(/branchMemberships/$(resource.data.branchId)_$(request.auth.uid))`. This prevents users from listing documents from unauthorized branches and ensures rules prevent unintended data exposure rather than relying on client-side filtering. This pattern ensures that any `list` operation will only return data the user is explicitly authorized to view for the specified branch.\n*   Global and branch-specific dashboard statistics are queried by their explicit `id` (e.g., `/dashboardStatistics/global` or `/dashboardStatistics/{branchId}`). Rules then apply `exists()` checks on `adminUsers`, `financeTeamUsers`, or `branchMemberships` based on the requested `statisticId`.\n\n**Invariants:** Timestamps (`createdAt`, `updatedAt`) and ownership (`uploadedByUserId`, `paidByUserId`) are included in relevant entities to support data integrity. The `status` field in `Invoice` explicitly models the finite state, enhancing predictability. Consistent naming conventions (`branchId`, `supplierId`, `{userId}`) are used throughout for clarity and debuggability."
+  }
+}
