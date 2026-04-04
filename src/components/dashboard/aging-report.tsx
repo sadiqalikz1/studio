@@ -29,7 +29,10 @@ export function AgingReport() {
       <CardContent className="p-6">
         <div className="h-[300px] w-full">
           <ChartContainer config={chartConfig}>
-            <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+            <BarChart 
+              data={data} 
+              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            >
               <XAxis 
                 dataKey="range" 
                 axisLine={false} 
@@ -42,7 +45,10 @@ export function AgingReport() {
                 tick={{ fontSize: 12, fill: '#64748b' }}
                 tickFormatter={(val) => `₹${val/1000}k`}
               />
-              <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+              <ChartTooltip 
+                cursor={false} 
+                content={<ChartTooltipContent hideLabel />} 
+              />
               <Bar dataKey="amount" radius={[6, 6, 0, 0]} barSize={50}>
                 {data.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
