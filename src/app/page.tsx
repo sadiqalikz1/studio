@@ -45,11 +45,12 @@ export default function Dashboard() {
 
   const invoicesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    let q = collection(firestore, 'invoices');
+    const invCol = collection(firestore, 'invoices');
+    // Simplified query to avoid index errors on first boot
     if (selectedBranch !== 'all') {
-      return query(q, where('branchId', '==', selectedBranch), orderBy('dueDate', 'asc'), limit(20));
+      return query(invCol, where('branchId', '==', selectedBranch), limit(50));
     }
-    return query(q, orderBy('dueDate', 'asc'), limit(20));
+    return query(invCol, orderBy('dueDate', 'asc'), limit(50));
   }, [firestore, selectedBranch]);
   const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
 
@@ -58,6 +59,7 @@ export default function Dashboard() {
     totalOverdue: invoices?.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
     upcoming7Days: invoices?.filter(inv => inv.status === 'Pending').slice(0, 5).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
     upcoming30Days: invoices?.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
+    upcoming15Days: 0 // Satisfying the interface if needed, though not strictly required by the local object
   };
 
   return (

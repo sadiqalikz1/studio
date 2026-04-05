@@ -14,7 +14,7 @@ const data = [
 
 const chartConfig = {
   amount: {
-    label: "Outstanding Amount",
+    label: "Amount",
     color: "hsl(var(--primary))",
   },
 } satisfies ChartConfig;
