@@ -16,13 +16,22 @@ export default function ReportsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const { firestore } = useFirestore();
 
-  const invoicesQuery = useMemoFirebase(() => query(collection(firestore, 'invoices'), orderBy('dueDate', 'desc')), [firestore]);
+  const invoicesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'invoices'), orderBy('dueDate', 'desc'));
+  }, [firestore]);
   const { data: invoices, isLoading } = useCollection(invoicesQuery);
 
-  const suppliersQuery = useMemoFirebase(() => collection(firestore, 'suppliers'), [firestore]);
+  const suppliersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'suppliers');
+  }, [firestore]);
   const { data: suppliers } = useCollection(suppliersQuery);
 
-  const branchesQuery = useMemoFirebase(() => collection(firestore, 'branches'), [firestore]);
+  const branchesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'branches');
+  }, [firestore]);
   const { data: branches } = useCollection(branchesQuery);
 
   const filteredInvoices = invoices?.filter(inv => {

@@ -31,21 +31,26 @@ export default function UploadPage() {
   const [success, setSuccess] = useState(false);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
 
-  const branchesQuery = useMemoFirebase(() => collection(firestore, 'branches'), [firestore]);
+  const branchesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'branches');
+  }, [firestore]);
   const { data: branches } = useCollection(branchesQuery);
 
-  const suppliersQuery = useMemoFirebase(() => collection(firestore, 'suppliers'), [firestore]);
+  const suppliersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'suppliers');
+  }, [firestore]);
   const { data: suppliers } = useCollection(suppliersQuery);
 
   const handleUpload = () => {
-    if (!file || !selectedBranchId || !user) return;
+    if (!file || !selectedBranchId || !user || !firestore) return;
     
     setUploading(true);
     setSuccess(false);
     setProgress(0);
 
     // Simulate batch processing of invoices from "Excel"
-    // In a real app, we'd use a library to parse the file
     const mockBatchSize = 10;
     const interval = setInterval(() => {
       setProgress(prev => {
@@ -61,7 +66,7 @@ export default function UploadPage() {
 
     // Create mock invoices in Firestore
     for (let i = 0; i < mockBatchSize; i++) {
-      const supplier = suppliers?.[i % suppliers.length];
+      const supplier = suppliers?.[i % (suppliers?.length || 1)];
       const invDate = new Date();
       const creditDays = supplier?.defaultCreditDays || 30;
       const dueDate = addDays(invDate, creditDays);
