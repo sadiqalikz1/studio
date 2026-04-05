@@ -11,10 +11,13 @@ import {
   History, 
   Building2, 
   LogOut,
-  ChevronRight
+  ChevronRight,
+  LogIn
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useUser, useAuth, initiateAnonymousSignIn } from '@/firebase';
+import { signOut } from 'firebase/auth';
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -27,6 +30,16 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, isUserLoading } = useUser();
+  const auth = useAuth();
+
+  const handleAuth = () => {
+    if (user) {
+      signOut(auth);
+    } else {
+      initiateAnonymousSignIn(auth);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen w-64 border-r bg-white shadow-sm fixed left-0 top-0">
@@ -46,7 +59,7 @@ export function Sidebar() {
           return (
             <Link key={item.name} href={item.href}>
               <div className={cn(
-                "flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                "flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group cursor-pointer",
                 isActive 
                   ? "bg-primary text-white shadow-md shadow-primary/20" 
                   : "text-muted-foreground hover:bg-secondary hover:text-primary"
@@ -64,17 +77,35 @@ export function Sidebar() {
 
       <div className="p-4 border-t bg-slate-50/50">
         <div className="flex items-center gap-3 px-3 py-3 mb-4 rounded-xl border bg-white shadow-sm">
-          <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white font-bold text-xs">
-            JD
+          <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white font-bold text-xs uppercase">
+            {user ? (user.displayName?.[0] || user.email?.[0] || 'U') : '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold truncate">John Doe</p>
-            <p className="text-[10px] text-muted-foreground truncate">Finance Manager</p>
+            <p className="text-xs font-bold truncate">{user ? (user.displayName || user.email || 'Active User') : 'Guest'}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{user ? 'Authorized Session' : 'No Session'}</p>
           </div>
         </div>
-        <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10" size="sm">
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign Out
+        <Button 
+          variant="ghost" 
+          className={cn(
+            "w-full justify-start",
+            user ? "text-destructive hover:text-destructive hover:bg-destructive/10" : "text-primary hover:text-primary hover:bg-primary/10"
+          )} 
+          size="sm"
+          onClick={handleAuth}
+          disabled={isUserLoading}
+        >
+          {user ? (
+            <>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </>
+          ) : (
+            <>
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign In
+            </>
+          )}
         </Button>
       </div>
     </div>

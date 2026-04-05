@@ -5,7 +5,13 @@ import { useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { AgingReport } from '@/components/dashboard/aging-report';
-import { getStats, BRANCHES, INVOICES, SUPPLIERS } from '@/lib/mock-data';
+import { 
+  useCollection, 
+  useFirestore, 
+  useMemoFirebase,
+  useUser
+} from '@/firebase';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { 
   Select, 
   SelectContent, 
@@ -16,16 +22,43 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Filter, Download, Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function Dashboard() {
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
-  const stats = getStats(selectedBranch === 'all' ? undefined : selectedBranch);
+  const { firestore } = useFirestore();
+  const { user } = useUser();
 
-  const filteredInvoices = selectedBranch === 'all' 
-    ? INVOICES 
-    : INVOICES.filter(inv => inv.branchId === selectedBranch);
+  const branchesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'branches');
+  }, [firestore]);
+  const { data: branches } = useCollection(branchesQuery);
+
+  const suppliersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'suppliers');
+  }, [firestore]);
+  const { data: suppliers } = useCollection(suppliersQuery);
+
+  const invoicesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    let q = collection(firestore, 'invoices');
+    if (selectedBranch !== 'all') {
+      return query(q, where('branchId', '==', selectedBranch), orderBy('dueDate', 'asc'), limit(20));
+    }
+    return query(q, orderBy('dueDate', 'asc'), limit(20));
+  }, [firestore, selectedBranch]);
+  const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
+
+  const stats = {
+    totalOutstanding: invoices?.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
+    totalOverdue: invoices?.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
+    upcoming7Days: invoices?.filter(inv => inv.status === 'Pending').slice(0, 5).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
+    upcoming30Days: invoices?.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -46,7 +79,7 @@ export default function Dashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Branches</SelectItem>
-                  {BRANCHES.map(b => (
+                  {branches?.map(b => (
                     <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -56,10 +89,12 @@ export default function Dashboard() {
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            <Button className="h-10 bg-primary hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              New Entry
-            </Button>
+            <Link href="/upload">
+              <Button className="h-10 bg-primary hover:bg-primary/90">
+                <Plus className="mr-2 h-4 w-4" />
+                New Entry
+              </Button>
+            </Link>
           </div>
         </header>
 
@@ -74,16 +109,20 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="flex gap-4 items-start">
-                    <div className="w-2 h-2 rounded-full bg-accent mt-2 shrink-0" />
-                    <div className="flex-1 space-y-1">
-                      <p className="text-sm font-semibold">Payment logged for {SUPPLIERS[i % 5].name}</p>
-                      <p className="text-xs text-muted-foreground">FIFO Deduction applied to INV#1024</p>
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase">{i * 12} mins ago</p>
+                {!invoicesLoading && invoices && invoices.length > 0 ? (
+                   invoices.slice(0, 5).map(inv => (
+                    <div key={inv.id} className="flex gap-4 items-start">
+                      <div className="w-2 h-2 rounded-full bg-accent mt-2 shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-semibold">New invoice {inv.invoiceNumber}</p>
+                        <p className="text-xs text-muted-foreground">Due on {inv.dueDate}</p>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase">Updated Recently</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No recent activity detected.</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -94,9 +133,11 @@ export default function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <CardTitle className="text-lg font-headline">Critical Pending Invoices</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">Showing top overdue entries requiring immediate action.</p>
+                <p className="text-xs text-muted-foreground mt-1">Showing top entries requiring immediate action.</p>
               </div>
-              <Button variant="ghost" size="sm" className="text-primary font-semibold">View All</Button>
+              <Link href="/reports">
+                <Button variant="ghost" size="sm" className="text-primary font-semibold">View All</Button>
+              </Link>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -111,13 +152,17 @@ export default function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredInvoices.slice(0, 10).map((inv) => (
+                  {invoices?.map((inv) => (
                     <TableRow key={inv.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-mono text-xs font-semibold">{inv.invoiceNumber}</TableCell>
-                      <TableCell className="font-medium">{SUPPLIERS.find(s => s.id === inv.supplierId)?.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{BRANCHES.find(b => b.id === inv.branchId)?.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {suppliers?.find(s => s.id === inv.supplierId)?.name || 'Unknown'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {branches?.find(b => b.id === inv.branchId)?.name || 'Unknown'}
+                      </TableCell>
                       <TableCell className="text-sm">{inv.dueDate}</TableCell>
-                      <TableCell className="text-right font-bold">₹{inv.remainingBalance.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-bold">₹{(inv.remainingBalance || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-center">
                         <Badge 
                           variant={inv.status === 'Overdue' ? 'destructive' : 'secondary'}
@@ -128,6 +173,11 @@ export default function Dashboard() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(!invoices || invoices.length === 0) && !invoicesLoading && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No pending invoices found.</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

@@ -1,14 +1,48 @@
 
 "use client";
 
+import { useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { SUPPLIERS } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
 import { Plus, Mail, Phone, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { collection, serverTimestamp } from 'firebase/firestore';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function SuppliersPage() {
+  const { firestore } = useFirestore();
+  const suppliersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'suppliers');
+  }, [firestore]);
+  const { data: suppliers, isLoading } = useCollection(suppliersQuery);
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({ 
+    name: '', 
+    category: '', 
+    email: '', 
+    phone: '', 
+    defaultCreditDays: 30 
+  });
+
+  const handleAddSupplier = () => {
+    if (!newSupplier.name || !firestore) return;
+    
+    addDocumentNonBlocking(collection(firestore, 'suppliers'), {
+      ...newSupplier,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    
+    setNewSupplier({ name: '', category: '', email: '', phone: '', defaultCreditDays: 30 });
+    setIsDialogOpen(false);
+  };
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -18,14 +52,66 @@ export default function SuppliersPage() {
             <h2 className="text-3xl font-bold font-headline text-slate-900 tracking-tight">Suppliers</h2>
             <p className="text-muted-foreground mt-1">Manage vendor records and default credit terms.</p>
           </div>
-          <Button className="bg-primary">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Supplier
-          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Supplier
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Supplier</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Supplier Name</Label>
+                  <Input 
+                    value={newSupplier.name} 
+                    onChange={e => setNewSupplier({...newSupplier, name: e.target.value})}
+                    placeholder="Company Name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Input 
+                    value={newSupplier.category} 
+                    onChange={e => setNewSupplier({...newSupplier, category: e.target.value})}
+                    placeholder="e.g. Logistics"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input 
+                      value={newSupplier.email} 
+                      onChange={e => setNewSupplier({...newSupplier, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone</Label>
+                    <Input 
+                      value={newSupplier.phone} 
+                      onChange={e => setNewSupplier({...newSupplier, phone: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Default Credit Days</Label>
+                  <Input 
+                    type="number"
+                    value={newSupplier.defaultCreditDays} 
+                    onChange={e => setNewSupplier({...newSupplier, defaultCreditDays: parseInt(e.target.value)})}
+                  />
+                </div>
+                <Button className="w-full" onClick={handleAddSupplier}>Save Supplier</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {SUPPLIERS.map((supplier) => (
+          {suppliers?.map((supplier) => (
             <Card key={supplier.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
@@ -42,11 +128,11 @@ export default function SuppliersPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Mail className="h-4 w-4" />
-                    {supplier.email}
+                    {supplier.email || 'No email'}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Phone className="h-4 w-4" />
-                    {supplier.phone}
+                    {supplier.phone || 'No phone'}
                   </div>
                 </div>
                 
@@ -61,6 +147,11 @@ export default function SuppliersPage() {
               </CardContent>
             </Card>
           ))}
+          {(!suppliers || suppliers.length === 0) && !isLoading && (
+            <div className="col-span-3 text-center py-20 bg-white rounded-xl border-2 border-dashed">
+              <p className="text-muted-foreground">No suppliers found. Add one to track dues.</p>
+            </div>
+          )}
         </div>
       </main>
     </div>

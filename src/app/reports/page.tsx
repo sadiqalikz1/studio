@@ -8,19 +8,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { INVOICES, SUPPLIERS, BRANCHES } from '@/lib/mock-data';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy } from 'firebase/firestore';
 import { Search, Download, Filter } from 'lucide-react';
 
 export default function ReportsPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const { firestore } = useFirestore();
 
-  const filteredInvoices = INVOICES.filter(inv => {
-    const supplier = SUPPLIERS.find(s => s.id === inv.supplierId)?.name || '';
+  const invoicesQuery = useMemoFirebase(() => query(collection(firestore, 'invoices'), orderBy('dueDate', 'desc')), [firestore]);
+  const { data: invoices, isLoading } = useCollection(invoicesQuery);
+
+  const suppliersQuery = useMemoFirebase(() => collection(firestore, 'suppliers'), [firestore]);
+  const { data: suppliers } = useCollection(suppliersQuery);
+
+  const branchesQuery = useMemoFirebase(() => collection(firestore, 'branches'), [firestore]);
+  const { data: branches } = useCollection(branchesQuery);
+
+  const filteredInvoices = invoices?.filter(inv => {
+    const supplier = suppliers?.find(s => s.id === inv.supplierId)?.name || '';
     return (
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       supplier.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  });
+  }) || [];
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -80,13 +91,13 @@ export default function ReportsPage() {
                     <TableCell className="text-sm">{inv.invoiceDate}</TableCell>
                     <TableCell className="font-mono text-xs font-semibold">{inv.invoiceNumber}</TableCell>
                     <TableCell className="font-medium">
-                      {SUPPLIERS.find(s => s.id === inv.supplierId)?.name}
+                      {suppliers?.find(s => s.id === inv.supplierId)?.name || 'Unknown'}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {BRANCHES.find(b => b.id === inv.branchId)?.name}
+                      {branches?.find(b => b.id === inv.branchId)?.name || 'Unknown'}
                     </TableCell>
-                    <TableCell className="text-right">₹{inv.amount.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-bold text-primary">₹{inv.remainingBalance.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">₹{(inv.invoiceAmount || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-bold text-primary">₹{(inv.remainingBalance || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-center">
                       <Badge 
                         variant={inv.status === 'Overdue' ? 'destructive' : 'secondary'}
@@ -97,6 +108,13 @@ export default function ReportsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {filteredInvoices.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-20 text-muted-foreground italic">
+                      No matching records found.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
