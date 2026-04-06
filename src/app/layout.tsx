@@ -1,9 +1,7 @@
-
 import type { Metadata } from 'next';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/layout/sidebar';
+import { PageWrapper } from '@/components/layout/page-wrapper';
 
 export const metadata: Metadata = {
   title: 'DuesFlow | Enterprise Supplier Dues Management',
@@ -24,12 +22,9 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-[#F3F6F9]">
         <FirebaseClientProvider>
-          <SidebarProvider defaultOpen={true}>
-            <div className="flex min-h-screen w-full">
-              <AppSidebar />
-              {children}
-            </div>
-          </SidebarProvider>
+          <PageWrapper>
+            {children}
+          </PageWrapper>
         </FirebaseClientProvider>
       </body>
     </html>
