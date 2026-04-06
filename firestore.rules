@@ -47,6 +47,17 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Admin & Team Roles: Users can read their own role status
+    match /adminUsers/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /financeTeamUsers/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
     // System Settings: Admin only
     match /systemSettings/{settingId} {
       allow read: if isAuthenticated();

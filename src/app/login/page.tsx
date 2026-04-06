@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && !isUserLoading) {
@@ -23,18 +24,34 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
 
-  const handleEmailLogin = (e: React.FormEvent) => {
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     setLoading(true);
-    initiateEmailSignIn(auth, email, password);
-    setTimeout(() => setLoading(false), 2000);
+    setError(null);
+    try {
+      await initiateEmailSignIn(auth, email, password);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setLoading(true);
-    initiateGoogleSignIn(auth);
-    setTimeout(() => setLoading(false), 2000);
+    setError(null);
+    try {
+      await initiateGoogleSignIn(auth);
+    } catch (err: any) {
+      // Ignore user-cancelled errors
+      if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
+        return;
+      }
+      setError(err.message || 'Google sign-in failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (isUserLoading) {
@@ -62,6 +79,11 @@ export default function LoginPage() {
             <CardDescription className="text-slate-400 font-medium mt-1">Sign in to your account to continue</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pt-8 px-8">
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-2">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleEmailLogin} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-slate-600 font-bold ml-1">Work Email</Label>
