@@ -46,7 +46,6 @@ export default function Dashboard() {
   const invoicesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     const invCol = collection(firestore, 'invoices');
-    // Simplified query to avoid index errors on first boot
     if (selectedBranch !== 'all') {
       return query(invCol, where('branchId', '==', selectedBranch), limit(50));
     }
@@ -59,7 +58,7 @@ export default function Dashboard() {
     totalOverdue: invoices?.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
     upcoming7Days: invoices?.filter(inv => inv.status === 'Pending').slice(0, 5).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
     upcoming30Days: invoices?.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
-    upcoming15Days: 0 // Satisfying the interface if needed, though not strictly required by the local object
+    upcoming15Days: 0
   };
 
   return (
@@ -105,7 +104,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
           <AgingReport />
           
-          <Card className="border-none shadow-sm">
+          <Card className="border-none shadow-sm overflow-hidden bg-white">
             <CardHeader>
               <CardTitle className="text-lg font-headline">Recent Activity</CardTitle>
             </CardHeader>
@@ -130,9 +129,9 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <div className="mt-8">
-          <Card className="border-none shadow-sm overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div className="mt-8 mb-12">
+          <Card className="border-none shadow-sm overflow-hidden bg-white">
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
               <div>
                 <CardTitle className="text-lg font-headline">Critical Pending Invoices</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">Showing top entries requiring immediate action.</p>
@@ -177,7 +176,7 @@ export default function Dashboard() {
                   ))}
                   {(!invoices || invoices.length === 0) && !invoicesLoading && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No pending invoices found.</TableCell>
+                      <TableCell colSpan={6} className="text-center py-20 text-muted-foreground">No pending invoices found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

@@ -21,35 +21,39 @@ const chartConfig = {
 
 export function AgingReport() {
   return (
-    <Card className="col-span-1 lg:col-span-2 border-none shadow-sm">
+    <Card className="col-span-1 lg:col-span-2 border-none shadow-sm overflow-hidden">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-headline">Aging Report</CardTitle>
         <CardDescription>Accounts payable distribution by overdue age</CardDescription>
       </CardHeader>
       <CardContent className="p-6">
         <div className="h-[300px] w-full">
-          <ChartContainer config={chartConfig}>
+          <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
             <BarChart 
               data={data} 
-              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             >
               <XAxis 
                 dataKey="range" 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 12, fill: '#64748b' }} 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
               />
               <YAxis 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 12, fill: '#64748b' }}
+                tick={{ fontSize: 10, fill: '#64748b' }}
                 tickFormatter={(val) => `₹${val/1000}k`}
               />
               <ChartTooltip 
                 cursor={false} 
                 content={<ChartTooltipContent hideLabel />} 
               />
-              <Bar dataKey="amount" radius={[6, 6, 0, 0]} barSize={50}>
+              <Bar 
+                dataKey="amount" 
+                radius={[4, 4, 0, 0]} 
+                barSize={40}
+              >
                 {data.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
