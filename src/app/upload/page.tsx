@@ -14,13 +14,15 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Info,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useFirestore, useUser, addDocumentNonBlocking, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { addDays, format } from 'date-fns';
+import { addDays, format, isBefore } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 export default function UploadPage() {
   const { firestore } = useFirestore();
@@ -29,7 +31,9 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [unregisteredSuppliers, setUnregisteredSuppliers] = useState<string[]>([]);
 
   const branchesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -43,50 +47,100 @@ export default function UploadPage() {
   }, [firestore]);
   const { data: suppliers } = useCollection(suppliersQuery);
 
-  const handleUpload = () => {
-    if (!file || !selectedBranchId || !user || !firestore) return;
+  const downloadTemplate = () => {
+    const headers = [['Invoice Number', 'Date (YYYY-MM-DD)', 'Supplier Name', 'Amount', 'Credit Days']];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(headers);
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, 'Tally_Import_Template.xlsx');
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0] || null;
+    setFile(selectedFile);
+    setSuccess(false);
+    setError(null);
+    setUnregisteredSuppliers([]);
+  };
+
+  const handleUpload = async () => {
+    if (!file || !selectedBranchId || !user || !firestore || !suppliers) return;
     
     setUploading(true);
     setSuccess(false);
-    setProgress(0);
+    setError(null);
+    setProgress(10);
 
-    // Simulate batch processing of invoices from "Excel"
-    const mockBatchSize = 10;
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setUploading(false);
-          setSuccess(true);
-          return 100;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+
+        if (rows.length === 0) {
+          throw new Error('The file is empty or formatted incorrectly.');
         }
-        return prev + 20;
-      });
-    }, 200);
 
-    // Create mock invoices in Firestore
-    for (let i = 0; i < mockBatchSize; i++) {
-      const supplier = suppliers?.[i % (suppliers?.length || 1)];
-      const invDate = new Date();
-      const creditDays = supplier?.defaultCreditDays || 30;
-      const dueDate = addDays(invDate, creditDays);
-      const amount = Math.floor(Math.random() * 50000) + 5000;
+        setProgress(30);
+        const unregistered: string[] = [];
+        const today = new Date();
 
-      addDocumentNonBlocking(collection(firestore, 'invoices'), {
-        branchId: selectedBranchId,
-        supplierId: supplier?.id || 'unknown',
-        invoiceNumber: `INV-${Date.now()}-${i}`,
-        invoiceDate: format(invDate, 'yyyy-MM-dd'),
-        dueDate: format(dueDate, 'yyyy-MM-dd'),
-        invoiceAmount: amount,
-        creditDays: creditDays,
-        remainingBalance: amount,
-        status: 'Pending',
-        isOpeningBalance: false,
-        uploadedAt: serverTimestamp(),
-        uploadedByUserId: user.uid
-      });
-    }
+        rows.forEach((row, index) => {
+          const invNo = row['Invoice Number'] || row['Voucher No'] || row['Ref No'];
+          const invDateStr = row['Date (YYYY-MM-DD)'] || row['Date'];
+          const supplierName = row['Supplier Name'] || row['Particulars'];
+          const amount = parseFloat(row['Amount'] || row['Debit'] || row['Credit']);
+          const creditDays = parseInt(row['Credit Days'] || '30');
+
+          const supplier = suppliers.find(s => s.name.toLowerCase() === supplierName?.toString().toLowerCase());
+
+          if (!supplier) {
+            unregistered.push(supplierName?.toString() || 'Unknown');
+          } else {
+            const invDate = new Date(invDateStr);
+            const dueDate = addDays(invDate, creditDays);
+            const status = isBefore(dueDate, today) ? 'Overdue' : 'Pending';
+
+            addDocumentNonBlocking(collection(firestore, 'invoices'), {
+              branchId: selectedBranchId,
+              supplierId: supplier.id,
+              invoiceNumber: invNo?.toString() || `GEN-${Date.now()}-${index}`,
+              invoiceDate: format(invDate, 'yyyy-MM-dd'),
+              dueDate: format(dueDate, 'yyyy-MM-dd'),
+              invoiceAmount: amount,
+              creditDays: creditDays,
+              remainingBalance: amount,
+              status: status,
+              isOpeningBalance: false,
+              uploadedAt: serverTimestamp(),
+              uploadedByUserId: user.uid
+            });
+          }
+          setProgress(30 + Math.floor((index / rows.length) * 70));
+        });
+
+        if (unregistered.length > 0) {
+          setUnregisteredSuppliers([...new Set(unregistered)]);
+        }
+        
+        setUploading(false);
+        setSuccess(true);
+        setProgress(100);
+      } catch (err: any) {
+        setError(err.message || 'Failed to parse file.');
+        setUploading(false);
+      }
+    };
+
+    reader.onerror = () => {
+      setError('Failed to read file.');
+      setUploading(false);
+    };
+
+    reader.readAsBinaryString(file);
   };
 
   return (
@@ -95,14 +149,14 @@ export default function UploadPage() {
       <main className="flex-1 ml-64 p-8">
         <header className="mb-8">
           <h2 className="text-3xl font-bold font-headline text-slate-900 tracking-tight">Import Purchase Data</h2>
-          <p className="text-muted-foreground mt-1">Upload Excel sheets from Tally for automated due date calculation.</p>
+          <p className="text-muted-foreground mt-1">Upload Excel or CSV sheets from Tally for automated due date calculation.</p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card className="border-none shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg font-headline">New Daily Purchases</CardTitle>
-              <CardDescription>Supported format: .xlsx, .csv standard template</CardDescription>
+              <CardTitle className="text-lg font-headline">Import Tool</CardTitle>
+              <CardDescription>Drag and drop your extracted Tally report here (.xlsx, .csv)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
@@ -125,12 +179,13 @@ export default function UploadPage() {
                     <FileUp className="w-8 h-8 text-primary" />
                   </div>
                   <h4 className="text-sm font-bold mb-1">Select Tally Extract</h4>
-                  <p className="text-xs text-muted-foreground mb-6">Drag and drop your extracted Tally report here</p>
+                  <p className="text-xs text-muted-foreground mb-6">Drag and drop your file here</p>
                   <Input 
                     type="file" 
                     id="file-upload" 
+                    accept=".xlsx, .xls, .csv"
                     className="hidden" 
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    onChange={handleFileChange}
                   />
                   <Label htmlFor="file-upload">
                     <Button variant="outline" asChild>
@@ -149,9 +204,9 @@ export default function UploadPage() {
                 >
                   {uploading ? 'Processing Batch...' : 'Import & Calculate Dues'}
                 </Button>
-                <Button variant="ghost" className="text-primary hover:text-primary hover:bg-primary/5">
+                <Button variant="ghost" className="text-primary" onClick={downloadTemplate}>
                   <Download className="mr-2 h-4 w-4" />
-                  Download Template
+                  Template
                 </Button>
               </div>
 
@@ -170,42 +225,67 @@ export default function UploadPage() {
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <AlertTitle>Success</AlertTitle>
                   <AlertDescription>
-                    Batch processed successfully. Dues have been distributed based on Credit Terms.
+                    Batch processed successfully. Dues have been distributed.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {error && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {unregisteredSuppliers.length > 0 && (
+                <Alert className="bg-amber-50 border-amber-200 text-amber-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle>Suppliers Not Found</AlertTitle>
+                  <AlertDescription>
+                    <p className="text-xs mb-2">The following suppliers are not in your master list and were skipped:</p>
+                    <ul className="text-xs list-disc pl-4">
+                      {unregisteredSuppliers.map((s, idx) => <li key={idx}>{s}</li>)}
+                    </ul>
                   </AlertDescription>
                 </Alert>
               )}
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm">
+          <Card className="border-none shadow-sm h-fit">
             <CardHeader>
-              <CardTitle className="text-lg font-headline">Validation Rules</CardTitle>
-              <CardDescription>Ensuring data integrity during atomic batch writes</CardDescription>
+              <CardTitle className="text-lg font-headline">How to Import</CardTitle>
+              <CardDescription>Ensuring a smooth Tally integration</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border">
-                  <div className="mt-1">
-                    <Info className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <h5 className="text-sm font-bold">Automatic Due Calculation</h5>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      System automatically reads "Credit Days" per row. If missing, it uses the Supplier's default defined in master settings.
-                    </p>
-                  </div>
+            <CardContent className="space-y-4">
+              <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border">
+                <div className="mt-1"><Info className="w-4 h-4 text-primary" /></div>
+                <div>
+                  <h5 className="text-sm font-bold text-slate-900">Step 1: Master Sync</h5>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ensure all suppliers in your Tally extract are already added in the "Suppliers" tab. Names must match exactly.
+                  </p>
                 </div>
+              </div>
 
-                <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border">
-                  <div className="mt-1">
-                    <AlertCircle className="w-4 h-4 text-orange-500" />
-                  </div>
-                  <div>
-                    <h5 className="text-sm font-bold">Unregistered Suppliers</h5>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      New suppliers found in Excel will be flagged for review before the batch is committed.
-                    </p>
-                  </div>
+              <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border">
+                <div className="mt-1"><Info className="w-4 h-4 text-primary" /></div>
+                <div>
+                  <h5 className="text-sm font-bold text-slate-900">Step 2: Export from Tally</h5>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Export your purchase register to Excel. Ensure columns for Invoice Number, Date, Particulars (Supplier), and Amount are present.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border">
+                <div className="mt-1"><AlertCircle className="w-4 h-4 text-orange-500" /></div>
+                <div>
+                  <h5 className="text-sm font-bold text-slate-900">Automatic Aging</h5>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    DuesFlow automatically detects if an invoice is overdue based on the "Credit Days" column. If missing, it uses the 30-day default.
+                  </p>
                 </div>
               </div>
             </CardContent>

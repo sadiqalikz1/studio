@@ -5,12 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts';
 
-const data = [
-  { range: '0-30 Days', amount: 450000, color: 'hsl(var(--primary))' },
-  { range: '31-60 Days', amount: 320000, color: 'hsl(var(--accent))' },
-  { range: '61-90 Days', amount: 150000, color: '#f59e0b' },
-  { range: '90+ Days', amount: 80000, color: 'hsl(var(--destructive))' },
-];
+interface AgingReportProps {
+  data: { range: string; amount: number; color: string }[];
+}
 
 const chartConfig = {
   amount: {
@@ -19,7 +16,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function AgingReport() {
+export function AgingReport({ data }: AgingReportProps) {
   return (
     <Card className="col-span-1 lg:col-span-2 border-none shadow-sm overflow-hidden">
       <CardHeader className="pb-2">

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { AgingReport } from '@/components/dashboard/aging-report';
@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { differenceInDays } from 'date-fns';
 
 export default function Dashboard() {
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
@@ -47,19 +48,55 @@ export default function Dashboard() {
     if (!firestore) return null;
     const invCol = collection(firestore, 'invoices');
     if (selectedBranch !== 'all') {
-      return query(invCol, where('branchId', '==', selectedBranch), limit(50));
+      return query(invCol, where('branchId', '==', selectedBranch), limit(100));
     }
-    return query(invCol, orderBy('dueDate', 'asc'), limit(50));
+    return query(invCol, orderBy('dueDate', 'asc'), limit(100));
   }, [firestore, selectedBranch]);
   const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
 
-  const stats = {
-    totalOutstanding: invoices?.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
-    totalOverdue: invoices?.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
-    upcoming7Days: invoices?.filter(inv => inv.status === 'Pending').slice(0, 5).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
-    upcoming30Days: invoices?.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0) || 0,
-    upcoming15Days: 0
-  };
+  const stats = useMemo(() => {
+    const invs = invoices || [];
+    const totalOutstanding = invs.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+    const totalOverdue = invs.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+    const upcoming7Days = invs.filter(inv => {
+      if (inv.status === 'Paid') return false;
+      const diff = differenceInDays(new Date(inv.dueDate), new Date());
+      return diff >= 0 && diff <= 7;
+    }).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+    const upcoming30Days = invs.filter(inv => {
+      if (inv.status === 'Paid') return false;
+      const diff = differenceInDays(new Date(inv.dueDate), new Date());
+      return diff >= 0 && diff <= 30;
+    }).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+
+    return {
+      totalOutstanding,
+      totalOverdue,
+      upcoming7Days,
+      upcoming30Days,
+      upcoming15Days: 0
+    };
+  }, [invoices]);
+
+  const agingData = useMemo(() => {
+    const invs = invoices?.filter(i => i.status === 'Overdue' || i.status === 'Partially Paid') || [];
+    const ranges = [
+      { range: '0-30 Days', amount: 0, color: 'hsl(var(--primary))' },
+      { range: '31-60 Days', amount: 0, color: 'hsl(var(--accent))' },
+      { range: '61-90 Days', amount: 0, color: '#f59e0b' },
+      { range: '90+ Days', amount: 0, color: 'hsl(var(--destructive))' },
+    ];
+
+    invs.forEach(inv => {
+      const diff = differenceInDays(new Date(), new Date(inv.dueDate));
+      if (diff > 0 && diff <= 30) ranges[0].amount += inv.remainingBalance;
+      else if (diff > 30 && diff <= 60) ranges[1].amount += inv.remainingBalance;
+      else if (diff > 60 && diff <= 90) ranges[2].amount += inv.remainingBalance;
+      else if (diff > 90) ranges[3].amount += inv.remainingBalance;
+    });
+
+    return ranges;
+  }, [invoices]);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -102,7 +139,7 @@ export default function Dashboard() {
         <StatsGrid stats={stats} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-          <AgingReport />
+          <AgingReport data={agingData} />
           
           <Card className="border-none shadow-sm overflow-hidden bg-white">
             <CardHeader>
@@ -115,9 +152,9 @@ export default function Dashboard() {
                     <div key={inv.id} className="flex gap-4 items-start">
                       <div className="w-2 h-2 rounded-full bg-accent mt-2 shrink-0" />
                       <div className="flex-1 space-y-1">
-                        <p className="text-sm font-semibold">New invoice {inv.invoiceNumber}</p>
+                        <p className="text-sm font-semibold">Invoice {inv.invoiceNumber}</p>
                         <p className="text-xs text-muted-foreground">Due on {inv.dueDate}</p>
-                        <p className="text-[10px] text-muted-foreground font-medium uppercase">Updated Recently</p>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase">{inv.status}</p>
                       </div>
                     </div>
                   ))
