@@ -18,6 +18,7 @@ import { Settings, Globe, CheckCircle2, Loader2 } from 'lucide-react';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 
 const CURRENCIES = [
+  { code: 'SAR', name: 'Saudi Riyal (SAR) - KSA' },
   { code: 'INR', name: 'Indian Rupee (₹)' },
   { code: 'USD', name: 'US Dollar ($)' },
   { code: 'EUR', name: 'Euro (€)' },

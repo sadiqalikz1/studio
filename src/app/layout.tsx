@@ -24,7 +24,7 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-[#F3F6F9]">
         <FirebaseClientProvider>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={true}>
             <div className="flex min-h-screen w-full">
               <AppSidebar />
               {children}

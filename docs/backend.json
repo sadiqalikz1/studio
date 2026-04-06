@@ -120,15 +120,15 @@
         },
         "branchId": {
           "type": "string",
-          "description": "Reference to the Branch where this invoice was issued. (Relationship: Branch 1:N Invoice)"
+          "description": "Reference to the Branch where this invoice was issued."
         },
         "supplierId": {
           "type": "string",
-          "description": "Reference to the Supplier from whom this invoice was received. (Relationship: Supplier 1:N Invoice)"
+          "description": "Reference to the Supplier from whom this invoice was received."
         },
         "invoiceNumber": {
           "type": "string",
-          "description": "The unique invoice number provided by the supplier (e.g., from Tally)."
+          "description": "The unique invoice number provided by the supplier."
         },
         "invoiceDate": {
           "type": "string",
@@ -145,16 +145,16 @@
         },
         "dueDate": {
           "type": "string",
-          "description": "The calculated due date for this invoice (invoiceDate + creditDays).",
+          "description": "The calculated due date for this invoice.",
           "format": "date"
         },
         "remainingBalance": {
           "type": "number",
-          "description": "The current outstanding amount remaining to be paid for this invoice."
+          "description": "The current outstanding amount remaining to be paid."
         },
         "status": {
           "type": "string",
-          "description": "The current payment status of the invoice (e.g., 'Pending', 'Partially Paid', 'Paid', 'Overdue')."
+          "description": "The current payment status (e.g., 'Pending', 'Partially Paid', 'Paid', 'Overdue')."
         },
         "isOpeningBalance": {
           "type": "boolean",
@@ -162,12 +162,12 @@
         },
         "uploadedAt": {
           "type": "string",
-          "description": "Timestamp when the invoice data was first uploaded into the system.",
+          "description": "Timestamp when the invoice was uploaded.",
           "format": "date-time"
         },
         "uploadedByUserId": {
           "type": "string",
-          "description": "Reference to the user ID (from external auth system) who uploaded this invoice."
+          "description": "Reference to the user who uploaded this invoice."
         }
       },
       "required": [
@@ -190,7 +190,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Payment",
       "type": "object",
-      "description": "Records individual payments made and how they are allocated across one or more invoices.",
+      "description": "Records individual payments made.",
       "properties": {
         "id": {
           "type": "string",
@@ -207,27 +207,24 @@
         },
         "paymentMethod": {
           "type": "string",
-          "description": "The method used for the payment (e.g., 'Bank Transfer', 'Cheque')."
+          "description": "The method used for the payment."
         },
         "referenceNumber": {
           "type": "string",
-          "description": "A transaction reference number or cheque number for the payment."
+          "description": "A transaction reference number or cheque number."
         },
         "paidByUserId": {
           "type": "string",
-          "description": "Reference to the user ID (from external auth system) who recorded this payment."
+          "description": "Reference to the user who recorded this payment."
         },
         "createdAt": {
           "type": "string",
           "description": "Timestamp when the payment record was created.",
           "format": "date-time"
         },
-        "invoiceAllocations": {
-          "type": "array",
-          "description": "An array detailing how this payment amount was distributed among different invoices. (Relationship: Payment 1:N InvoiceAllocation)",
-          "items": {
-            "type": "string"
-          }
+        "branchId": {
+          "type": "string",
+          "description": "The branch this payment belongs to."
         }
       },
       "required": [
@@ -236,14 +233,14 @@
         "amountPaid",
         "paidByUserId",
         "createdAt",
-        "invoiceAllocations"
+        "branchId"
       ]
     },
     "InvoiceAllocation": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "InvoiceAllocation",
       "type": "object",
-      "description": "Represents a specific portion of a payment applied to a single invoice, crucial for partial payment tracking.",
+      "description": "Represents a specific portion of a payment applied to a single invoice.",
       "properties": {
         "id": {
           "type": "string",
@@ -251,20 +248,24 @@
         },
         "paymentId": {
           "type": "string",
-          "description": "Reference to the Payment entity this allocation belongs to. (Relationship: Payment 1:N InvoiceAllocation)"
+          "description": "Reference to the Payment entity."
         },
         "invoiceId": {
           "type": "string",
-          "description": "Reference to the Invoice entity this payment portion was applied to. (Relationship: Invoice 1:N InvoiceAllocation)"
+          "description": "Reference to the Invoice entity."
         },
         "amountApplied": {
           "type": "number",
-          "description": "The specific amount from the payment that was applied to this invoice."
+          "description": "The specific amount applied."
         },
         "allocatedAt": {
           "type": "string",
           "description": "Timestamp when this allocation was recorded.",
           "format": "date-time"
+        },
+        "branchId": {
+          "type": "string",
+          "description": "The branch this allocation belongs to."
         }
       },
       "required": [
@@ -272,14 +273,15 @@
         "paymentId",
         "invoiceId",
         "amountApplied",
-        "allocatedAt"
+        "allocatedAt",
+        "branchId"
       ]
     },
     "UserSettings": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "UserSettings",
       "type": "object",
-      "description": "Stores personalized user preferences such as preferred currency and display settings.",
+      "description": "Stores personalized user preferences.",
       "properties": {
         "userId": {
           "type": "string",
@@ -287,8 +289,8 @@
         },
         "currency": {
           "type": "string",
-          "description": "Preferred currency code (e.g., INR, USD).",
-          "enum": ["INR", "USD", "EUR", "GBP"]
+          "description": "Preferred currency code.",
+          "enum": ["INR", "USD", "EUR", "GBP", "SAR"]
         },
         "updatedAt": {
           "type": "string",
@@ -345,6 +347,16 @@
             "$ref": "#/backend/entities/Payment"
           },
           "description": "Records individual payments."
+        }
+      },
+      {
+        "path": "/invoiceAllocations/{allocationId}",
+        "definition": {
+          "entityName": "InvoiceAllocation",
+          "schema": {
+            "$ref": "#/backend/entities/InvoiceAllocation"
+          },
+          "description": "Specific allocations of payments to invoices."
         }
       },
       {

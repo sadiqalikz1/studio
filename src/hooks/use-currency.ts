@@ -7,6 +7,7 @@ import { doc } from 'firebase/firestore';
 /**
  * Custom hook to manage and format currencies based on user settings.
  * Defaults to INR if no settings are found.
+ * Supports Saudi Riyal (SAR) for KSA.
  */
 export function useCurrency() {
   const { user } = useUser();
@@ -23,10 +24,14 @@ export function useCurrency() {
 
   /**
    * Formats a numeric value into the user's preferred currency format.
-   * Uses 'en-IN' for INR specifically to support lakhs/crores, otherwise 'en-US'.
+   * SAR: Uses 'en-SA' or 'ar-SA'.
+   * INR: Uses 'en-IN' for lakhs/crores notation.
    */
   const formatCurrency = (amount: number) => {
-    const locale = currencyCode === 'INR' ? 'en-IN' : 'en-US';
+    let locale = 'en-US';
+    if (currencyCode === 'INR') locale = 'en-IN';
+    if (currencyCode === 'SAR') locale = 'en-SA';
+    
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currencyCode,
