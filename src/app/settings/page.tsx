@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -37,7 +36,7 @@ export default function SettingsPage() {
   }, [firestore, user?.uid]);
 
   const { data: settings, isLoading } = useDoc(settingsRef);
-  const [selectedCurrency, setSelectedCurrency] = useState('INR');
+  const [selectedCurrency, setSelectedCurrency] = useState('SAR');
 
   useEffect(() => {
     if (settings?.currency) {

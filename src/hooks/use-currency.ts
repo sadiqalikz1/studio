@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
@@ -6,7 +5,7 @@ import { doc } from 'firebase/firestore';
 
 /**
  * Custom hook to manage and format currencies based on user settings.
- * Defaults to INR if no settings are found.
+ * Defaults to SAR if no settings are found.
  * Supports Saudi Riyal (SAR) for KSA.
  */
 export function useCurrency() {
@@ -20,7 +19,7 @@ export function useCurrency() {
 
   const { data: settings } = useDoc(settingsRef);
 
-  const currencyCode = settings?.currency || 'INR';
+  const currencyCode = settings?.currency || 'SAR';
 
   /**
    * Formats a numeric value into the user's preferred currency format.

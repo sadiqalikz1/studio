@@ -1,20 +1,21 @@
-
 "use client";
 
-import { use } from 'react';
+import { use, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, collection, query, where, orderBy } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Download, ExternalLink, IndianRupee, TrendingUp, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Download, IndianRupee, TrendingUp, AlertCircle, Banknote } from 'lucide-react';
 import Link from 'next/link';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { useCurrency } from '@/hooks/use-currency';
 
 export default function SupplierLedgerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: supplierId } = use(params);
   const { firestore } = useFirestore();
+  const { formatCurrency } = useCurrency();
 
   // 1. Fetch Supplier Details
   const supplierRef = useMemoFirebase(() => {
@@ -35,12 +36,12 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ id: s
   const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
 
   // 3. Aggregate Stats
-  const stats = useMemoFirebase(() => {
+  const stats = useMemo(() => {
     if (!invoices) return { total: 0, outstanding: 0, overdue: 0 };
     return invoices.reduce((acc, inv) => ({
-      total: acc.total + inv.invoiceAmount,
+      total: acc.total + (inv.invoiceAmount || 0),
       outstanding: acc.outstanding + (inv.remainingBalance || 0),
-      overdue: acc.overdue + (inv.status === 'Overdue' ? inv.remainingBalance : 0)
+      overdue: acc.overdue + (inv.status === 'Overdue' ? (inv.remainingBalance || 0) : 0)
     }), { total: 0, outstanding: 0, overdue: 0 });
   }, [invoices]);
 
@@ -77,16 +78,16 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ id: s
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Billing</p>
                 <TrendingUp className="h-4 w-4 text-primary shrink-0" />
               </div>
-              <p className="text-2xl font-bold truncate">₹{stats.total.toLocaleString()}</p>
+              <p className="text-2xl font-bold truncate">{formatCurrency(stats.total)}</p>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Outstanding</p>
-                <IndianRupee className="h-4 w-4 text-accent shrink-0" />
+                <Banknote className="h-4 w-4 text-accent shrink-0" />
               </div>
-              <p className="text-2xl font-bold text-primary truncate">₹{stats.outstanding.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-primary truncate">{formatCurrency(stats.outstanding)}</p>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white border-l-4 border-l-destructive">
@@ -95,7 +96,7 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ id: s
                 <p className="text-[10px] font-bold text-destructive uppercase tracking-wider">Overdue</p>
                 <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
               </div>
-              <p className="text-2xl font-bold text-destructive truncate">₹{stats.overdue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-destructive truncate">{formatCurrency(stats.overdue)}</p>
             </CardContent>
           </Card>
         </div>
@@ -129,8 +130,8 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ id: s
                     <TableCell className="text-sm">{inv.invoiceDate}</TableCell>
                     <TableCell className="font-mono text-xs font-bold">{inv.invoiceNumber}</TableCell>
                     <TableCell className="text-sm">{inv.dueDate}</TableCell>
-                    <TableCell className="text-right">₹{inv.invoiceAmount.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-bold text-primary">₹{(inv.remainingBalance || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(inv.invoiceAmount || 0)}</TableCell>
+                    <TableCell className="text-right font-bold text-primary">{formatCurrency(inv.remainingBalance || 0)}</TableCell>
                     <TableCell className="text-center">
                       <Badge 
                         variant={inv.status === 'Overdue' ? 'destructive' : 'secondary'}

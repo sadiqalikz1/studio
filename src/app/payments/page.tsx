@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -19,10 +18,12 @@ import { CreditCard, Info, CheckCircle2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { useCurrency } from '@/hooks/use-currency';
 
 export default function PaymentsPage() {
   const { firestore } = useFirestore();
   const { user } = useUser();
+  const { formatCurrency, currencyCode } = useCurrency();
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
   const [reference, setReference] = useState<string>('');
@@ -153,7 +154,7 @@ export default function PaymentsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Payment Amount (₹)</Label>
+                <Label>Payment Amount ({currencyCode})</Label>
                 <Input 
                   type="number" 
                   placeholder="0.00" 
@@ -212,8 +213,8 @@ export default function PaymentsPage() {
                         <TableRow key={idx}>
                           <TableCell className="font-mono text-xs">{dist.invoiceNumber}</TableCell>
                           <TableCell>{dist.dueDate}</TableCell>
-                          <TableCell className="text-right">₹{dist.pending.toLocaleString()}</TableCell>
-                          <TableCell className="text-right text-green-600 font-bold">₹{dist.allocation.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(dist.pending)}</TableCell>
+                          <TableCell className="text-right text-green-600 font-bold">{formatCurrency(dist.allocation)}</TableCell>
                         </TableRow>
                       ))
                     ) : (
