@@ -78,14 +78,47 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
     const unsubscribe = onAuthStateChanged(
       auth,
-      async (firebaseUser) => { // Auth state determined
-        setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
+      async (firebaseUser) => {
+        if (!firebaseUser) {
+          setUserAuthState({ user: null, isUserLoading: false, userError: null });
+          return;
+        }
 
-        // Sync profile to Firestore if user exists
-        if (firebaseUser && firestore) {
-          const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-          const userRef = doc(firestore, 'users', firebaseUser.uid);
+        if (firestore) {
+          const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
+          
           try {
+            // 1. Check if user belongs to an authorized group (Admin or Standard)
+            const adminRef = doc(firestore, 'adminUsers', firebaseUser.uid);
+            const standardRef = doc(firestore, 'financeTeamUsers', firebaseUser.uid);
+            
+            const [adminSnap, standardSnap] = await Promise.all([
+              getDoc(adminRef),
+              getDoc(standardRef)
+            ]);
+            
+            const isAuthorized = adminSnap.exists() || standardSnap.exists();
+
+            // 2. If NOT authorized, check if signups are globally disabled
+            if (!isAuthorized) {
+              const settingsRef = doc(firestore, 'systemSettings', 'auth');
+              const settingsSnap = await getDoc(settingsRef);
+              const signupDisabled = settingsSnap.exists() && settingsSnap.data().signupDisabled === true;
+
+              if (signupDisabled) {
+                console.warn("FirebaseProvider: Signup is disabled for new users.");
+                await auth.signOut();
+                setUserAuthState({ 
+                  user: null, 
+                  isUserLoading: false, 
+                  userError: new Error("REGISTRATION_DISABLED: New user registrations are currently disabled by the administrator.") 
+                });
+                return;
+              }
+            }
+
+            // 3. Sync profile if authorized or signup is enabled
+            const userRef = doc(firestore, 'users', firebaseUser.uid);
             await setDoc(userRef, {
               uid: firebaseUser.uid,
               displayName: firebaseUser.displayName,
@@ -93,9 +126,14 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
               photoURL: firebaseUser.photoURL,
               lastLogin: serverTimestamp()
             }, { merge: true });
+
+            setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
           } catch (e) {
-            console.error("FirebaseProvider: Profile sync error:", e);
+            console.error("FirebaseProvider: Auth sync error:", e);
+            setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
           }
+        } else {
+          setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
         }
       },
       (error) => { // Auth listener error

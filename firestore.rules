@@ -46,5 +46,17 @@ service cloud.firestore {
     match /userSettings/{userId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
+
+    // System Settings: Admin only
+    match /systemSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Helper to check if the user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+    }
   }
 }

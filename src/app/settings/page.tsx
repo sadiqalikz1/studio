@@ -12,7 +12,9 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useUser, useFirestore, useDoc, useMemoFirebase, setDocumentNonBlocking, useAuth } from '@/firebase';
+import { useUserRole } from '@/hooks/use-user-role';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { Globe, CheckCircle2, Loader2, User, LogOut, ShieldCheck } from 'lucide-react';
@@ -28,6 +30,7 @@ const CURRENCIES = [
 
 export default function SettingsPage() {
   const { user } = useUser();
+  const { isAdmin } = useUserRole();
   const auth = useAuth();
   const firestore = useFirestore();
   const [saving, setSaving] = useState(false);
@@ -38,14 +41,25 @@ export default function SettingsPage() {
     return doc(firestore, 'userSettings', user.uid);
   }, [firestore, user?.uid]);
 
+  const adminSettingsRef = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return doc(firestore, 'systemSettings', 'auth');
+  }, [firestore, isAdmin]);
+
   const { data: settings, isLoading } = useDoc(settingsRef);
+  const { data: adminSettings, isLoading: isAdminSettingsLoading } = useDoc(adminSettingsRef);
+  
   const [selectedCurrency, setSelectedCurrency] = useState('SAR');
+  const [signupDisabled, setSignupDisabled] = useState(false);
 
   useEffect(() => {
     if (settings?.currency) {
       setSelectedCurrency(settings.currency);
     }
-  }, [settings]);
+    if (adminSettings) {
+      setSignupDisabled(adminSettings.signupDisabled === true);
+    }
+  }, [settings, adminSettings]);
 
   const handleSave = () => {
     if (!firestore || !user?.uid) return;
@@ -66,6 +80,20 @@ export default function SettingsPage() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     }, 800);
+  };
+
+  const handleAdminToggle = (checked: boolean) => {
+    if (!firestore || !isAdmin) return;
+    setSignupDisabled(checked);
+    setDocumentNonBlocking(
+      doc(firestore, 'systemSettings', 'auth'),
+      {
+        signupDisabled: checked,
+        updatedAt: serverTimestamp(),
+        updatedBy: user?.email
+      },
+      { merge: true }
+    );
   };
 
   const handleLogout = () => {
@@ -176,6 +204,45 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Admin Security Settings */}
+          {isAdmin && (
+            <Card className="border-none shadow-sm overflow-hidden bg-white border-l-4 border-l-orange-500">
+              <CardHeader className="flex flex-row items-center gap-4 border-b bg-orange-50/10 pb-6">
+                <div className="p-2.5 bg-orange-100 rounded-xl shrink-0">
+                  <ShieldCheck className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-headline">Enterprise Security Controls</CardTitle>
+                  <CardDescription>Access management and global restriction protocols.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6 pt-8">
+                <div className="flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                  <div className="space-y-0.5">
+                    <Label className="text-base font-bold text-slate-800">New User Registration</Label>
+                    <p className="text-sm text-slate-500">
+                      When disabled, only pre-authorized team members can access the system.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${signupDisabled ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                      {signupDisabled ? 'BLOCKED' : 'ACTIVE'}
+                    </span>
+                    <Switch 
+                      checked={!signupDisabled} 
+                      onCheckedChange={(checked) => handleAdminToggle(!checked)} 
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3 p-4 text-sm font-medium text-orange-800 bg-orange-50 rounded-xl border border-orange-100">
+                  <ShieldCheck className="w-5 h-5 shrink-0" />
+                  <p>Changes here take effect immediately for all new connection attempts. Existing active sessions will not be terminated.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Logout Section */}
           <Card className="border-none shadow-sm overflow-hidden bg-white border-l-4 border-l-destructive/50">
