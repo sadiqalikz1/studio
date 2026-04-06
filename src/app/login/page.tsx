@@ -1,22 +1,42 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth, initiateGoogleSignIn, initiateEmailSignIn, useUser } from '@/firebase';
-import { CreditCard, LogIn, Mail, Lock, Loader2 } from 'lucide-react';
+import { useAuth, initiateEmailSignIn, initiateEmailSignUp, useUser, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
+import { CreditCard, LogIn, Mail, Lock, Loader2, UserPlus, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { doc } from 'firebase/firestore';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
+  
+  const registrationRef = useMemoFirebase(() => {
+    return doc(firestore, 'systemSettings', 'auth');
+  }, [firestore]);
+
+  const { data: registrationData, isLoading: isRegLoading } = useDoc(registrationRef);
+  const signupDisabled = registrationData?.signupDisabled === true;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'registration-disabled') {
+      setError('Registration is currently disabled. Only existing accounts can sign in.');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user && !isUserLoading) {
@@ -32,23 +52,32 @@ export default function LoginPage() {
     try {
       await initiateEmailSignIn(auth, email, password);
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in. Please check your credentials.');
+      if (err.code === 'auth/user-not-found') {
+        setError('No account found with this email. Please switch to the "Sign Up" tab to create one.');
+      } else if (err.code === 'auth/invalid-credential') {
+        setError('Incorrect password or user not found. Please try again.');
+      } else {
+        setError(err.message || 'Failed to sign in. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    if (signupDisabled) {
+      setError('Registration is currently disabled by system administrator.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await initiateGoogleSignIn(auth);
+      await initiateEmailSignUp(auth, email, password);
+      setSuccess('Account created successfully! Redirecting...');
     } catch (err: any) {
-      // Ignore user-cancelled errors
-      if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
-        return;
-      }
-      setError(err.message || 'Google sign-in failed.');
+      setError(err.message || 'Failed to create account.');
     } finally {
       setLoading(false);
     }
@@ -74,91 +103,141 @@ export default function LoginPage() {
         </div>
 
         <Card className="border-none shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] bg-white overflow-hidden">
-          <CardHeader className="pt-10 pb-6 text-center border-b border-slate-50">
-            <CardTitle className="text-2xl font-bold text-slate-900">Welcome Back</CardTitle>
-            <CardDescription className="text-slate-400 font-medium mt-1">Sign in to your account to continue</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-8 px-8">
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-2">
-                {error}
-              </div>
-            )}
-            <form onSubmit={handleEmailLogin} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-600 font-bold ml-1">Work Email</Label>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
-                  <Input 
-                    id="email"
-                    type="email" 
-                    placeholder="name@company.com" 
-                    className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
-                    value={email}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center ml-1">
-                  <Label htmlFor="password" className="text-slate-600 font-bold">Password</Label>
-                  <Button variant="link" className="p-0 h-auto text-xs font-bold text-primary opacity-80 hover:opacity-100">Forgot?</Button>
-                </div>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
-                  <Input 
-                    id="password"
-                    type="password" 
-                    placeholder="••••••••" 
-                    className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
-                    value={password}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all text-base" disabled={loading}>
-                {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <LogIn className="h-5 w-5 mr-2" />}
-                Sign In
-              </Button>
-            </form>
+          <Tabs defaultValue="signup" className="w-full">
+            <TabsList className="w-full grid grid-cols-2 h-14 bg-slate-100/50 p-1 rounded-none border-b border-slate-50">
+              <TabsTrigger value="signin" className="rounded-none data-[state=active]:bg-white data-[state=active]:shadow-none font-bold text-sm">
+                <LogIn className="w-4 h-4 mr-2" /> Sign In
+              </TabsTrigger>
+              <TabsTrigger value="signup" className="rounded-none data-[state=active]:bg-white data-[state=active]:shadow-none font-bold text-sm">
+                <UserPlus className="w-4 h-4 mr-2" /> Sign Up
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="relative py-2">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-slate-100" />
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-black text-slate-300">
-                <span className="bg-white px-4">Secure Gateway</span>
-              </div>
-            </div>
+            <CardContent className="space-y-6 pt-10 px-8">
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-2 flex items-center gap-3">
+                  <ShieldAlert className="w-5 h-5 shrink-0" />
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-green-600 text-sm font-medium animate-in fade-in slide-in-from-top-2 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  {success}
+                </div>
+              )}
 
-            <Button 
-              variant="outline" 
-              className="w-full h-12 border-slate-100 hover:bg-slate-50 hover:border-slate-200 font-bold rounded-xl text-slate-600 transition-all gap-3"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24">
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-                  fill="#EA4335"
-                />
-                <path d="M1 1h22v22H1z" fill="none" />
-              </svg>
-              Continue with Google
-            </Button>
-          </CardContent>
+              <TabsContent value="signin" className="mt-0 outline-none">
+                <div className="space-y-6">
+                  <div className="text-center space-y-1 mb-8">
+                    <h2 className="text-2xl font-bold text-slate-900">Welcome Back</h2>
+                    <p className="text-slate-400 text-sm font-medium">Access your enterprise dashboard</p>
+                  </div>
+                  
+                  <form onSubmit={handleEmailLogin} className="space-y-5">
+                    <div className="space-y-2">
+                      <Label htmlFor="email-signin" className="text-slate-600 font-bold ml-1">Work Email</Label>
+                      <div className="relative group">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                        <Input 
+                          id="email-signin"
+                          type="email" 
+                          placeholder="name@company.com" 
+                          className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
+                          value={email}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center ml-1">
+                        <Label htmlFor="password-signin" className="text-slate-600 font-bold">Password</Label>
+                        <Button variant="link" className="p-0 h-auto text-xs font-bold text-primary opacity-80 hover:opacity-100">Forgot?</Button>
+                      </div>
+                      <div className="relative group">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                        <Input 
+                          id="password-signin"
+                          type="password" 
+                          placeholder="••••••••" 
+                          className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
+                          value={password}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button type="submit" className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all text-base" disabled={loading}>
+                      {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <LogIn className="h-5 w-5 mr-2" />}
+                      Authorize Access
+                    </Button>
+                  </form>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="signup" className="mt-0 outline-none">
+                {signupDisabled ? (
+                  <div className="py-8 px-4 text-center space-y-6">
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-50 rounded-full mb-2">
+                      <ShieldAlert className="w-10 h-10 text-orange-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-bold text-slate-900">Registrations Closed</h2>
+                      <p className="text-slate-500 text-sm leading-relaxed px-4">
+                        Self-signup is currently restricted. Please contact your system administrator to request access to the DuesFlow platform.
+                      </p>
+                    </div>
+                    <div className="pt-4">
+                      <Button variant="outline" className="rounded-xl font-bold px-8" asChild>
+                        <a href="mailto:admin@duesflow.com">Contact Support</a>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="text-center space-y-1 mb-8">
+                      <h2 className="text-2xl font-bold text-slate-900">Create Account</h2>
+                      <p className="text-slate-400 text-sm font-medium">Join our supplier tracking network</p>
+                    </div>
+
+                    <form onSubmit={handleEmailSignUp} className="space-y-5">
+                      <div className="space-y-2">
+                        <Label htmlFor="email-signup" className="text-slate-600 font-bold ml-1">Work Email</Label>
+                        <div className="relative group">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                          <Input 
+                            id="email-signup"
+                            type="email" 
+                            placeholder="name@company.com" 
+                            className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
+                            value={email}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="password-signup" className="text-slate-600 font-bold ml-1">Password</Label>
+                        <div className="relative group">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                          <Input 
+                            id="password-signup"
+                            type="password" 
+                            placeholder="Min. 8 characters" 
+                            className="pl-12 bg-slate-50 border-transparent focus:border-primary/20 focus:bg-white h-12 rounded-xl transition-all font-medium text-slate-700"
+                            value={password}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all text-base" disabled={loading}>
+                        {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <UserPlus className="h-5 w-5 mr-2" />}
+                        Register Now
+                      </Button>
+                    </form>
+                  </div>
+                )}
+              </TabsContent>
+            </CardContent>
+          </Tabs>
           <CardFooter className="pb-10 pt-4 text-center justify-center">
             <p className="text-[11px] text-slate-400 font-medium px-8 leading-relaxed">
               By signing in, you agree to our <span className="text-primary/70 cursor-pointer hover:underline">Terms of Service</span> and <span className="text-primary/70 cursor-pointer hover:underline">Privacy Policy</span>.

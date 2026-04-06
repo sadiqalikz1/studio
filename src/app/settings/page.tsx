@@ -214,31 +214,38 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <CardTitle className="text-lg font-headline">Enterprise Security Controls</CardTitle>
-                  <CardDescription>Access management and global restriction protocols.</CardDescription>
+                  <CardDescription>System-wide access management and registration protocols.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6 pt-8">
-                <div className="flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/30">
-                  <div className="space-y-0.5">
-                    <Label className="text-base font-bold text-slate-800">New User Registration</Label>
-                    <p className="text-sm text-slate-500">
-                      When disabled, only pre-authorized team members can access the system.
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-xl border border-slate-100 bg-slate-50/30 gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-base font-bold text-slate-800 tracking-tight">New User Registration</Label>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${signupDisabled ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                        {signupDisabled ? 'Currently Blocked' : 'Open for Signup'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-500 max-w-md">
+                      Restrict access to pre-authorized team members only. When disabled, the Google Signup gate will reject all new connections.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${signupDisabled ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                      {signupDisabled ? 'BLOCKED' : 'ACTIVE'}
-                    </span>
-                    <Switch 
-                      checked={!signupDisabled} 
-                      onCheckedChange={(checked) => handleAdminToggle(!checked)} 
-                    />
-                  </div>
+                  <Button 
+                    variant={signupDisabled ? "default" : "destructive"}
+                    onClick={() => handleAdminToggle(!signupDisabled)}
+                    className={`h-11 px-6 rounded-xl font-bold transition-all shadow-lg ${signupDisabled ? 'bg-green-600 hover:bg-green-700 shadow-green-900/10' : 'bg-red-600 hover:bg-red-700 shadow-red-900/10'}`}
+                  >
+                    {signupDisabled ? (
+                      <span className="flex items-center gap-2 font-headline uppercase tracking-wide text-xs">Enable Registrations</span>
+                    ) : (
+                      <span className="flex items-center gap-2 font-headline uppercase tracking-wide text-xs">Disable New Signups</span>
+                    )}
+                  </Button>
                 </div>
                 
-                <div className="flex items-start gap-3 p-4 text-sm font-medium text-orange-800 bg-orange-50 rounded-xl border border-orange-100">
+                <div className="flex items-start gap-3 p-4 text-xs font-medium text-orange-800 bg-orange-50 rounded-xl border border-orange-100">
                   <ShieldCheck className="w-5 h-5 shrink-0" />
-                  <p>Changes here take effect immediately for all new connection attempts. Existing active sessions will not be terminated.</p>
+                  <p>Security Note: This toggle affects the real-time authentication pipeline. Existing active sessions will remain valid until logout.</p>
                 </div>
               </CardContent>
             </Card>

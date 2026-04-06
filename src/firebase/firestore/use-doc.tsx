@@ -92,7 +92,17 @@ export function useDoc<T = any>(
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        try {
+          unsubscribe();
+        } catch (e) {
+          // If the SDK state is already corrupted (e.g., unexpected state ca9),
+          // uncurbed failure to unsubscribe might crash the app thread.
+          console.error("useDoc: Failed to unsubscribe cleanly:", e);
+        }
+      }
+    };
   }, [memoizedDocRef]); // Re-run if the memoizedDocRef changes.
 
   return { data, isLoading, error };

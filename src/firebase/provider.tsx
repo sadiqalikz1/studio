@@ -2,7 +2,7 @@
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore } from 'firebase/firestore';
+import { Firestore, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 
@@ -85,8 +85,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
         }
 
         if (firestore) {
-          const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
-          
           try {
             // 1. Check if user belongs to an authorized group (Admin or Standard)
             const adminRef = doc(firestore, 'adminUsers', firebaseUser.uid);
@@ -106,13 +104,13 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
               const signupDisabled = settingsSnap.exists() && settingsSnap.data().signupDisabled === true;
 
               if (signupDisabled) {
-                console.warn("FirebaseProvider: Signup is disabled for new users.");
+                console.warn("New registration attempt blocked by system policy.");
                 await auth.signOut();
-                setUserAuthState({ 
-                  user: null, 
-                  isUserLoading: false, 
-                  userError: new Error("REGISTRATION_DISABLED: New user registrations are currently disabled by the administrator.") 
-                });
+                // We're already on /login or will be redirected there. 
+                // Append a query param to tell the LoginPage why we are here.
+                if (typeof window !== 'undefined' && !window.location.search.includes('error=registration-disabled')) {
+                    window.location.href = '/login?error=registration-disabled';
+                }
                 return;
               }
             }
