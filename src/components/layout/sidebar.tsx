@@ -89,13 +89,16 @@ export function AppSidebar() {
                   className={cn(
                     "transition-all duration-200 h-11 px-4 rounded-xl group",
                     isActive 
-                      ? "bg-primary text-white hover:bg-primary/95 hover:text-white shadow-md shadow-primary/25 scale-[1.02]" 
-                      : "text-slate-500 hover:bg-slate-100 hover:text-primary"
+                      ? "bg-blue-600 text-white hover:bg-blue-700 hover:text-white shadow-md shadow-blue-600/25 scale-[1.02]" 
+                      : "text-slate-500 hover:bg-slate-100 hover:text-blue-600"
                   )}
                 >
                   <Link href={item.href}>
-                    <item.icon className={cn("w-5 h-5 transition-colors", isActive ? "text-white" : "text-slate-400 group-hover:text-primary")} />
-                    <span className="font-semibold">{item.name}</span>
+                    <item.icon className={cn(
+                      "w-5 h-5 transition-colors",
+                      isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"
+                    )} />
+                    <span className={isActive ? "font-semibold text-white" : "font-semibold"}>{item.name}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
