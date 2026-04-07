@@ -72,6 +72,7 @@ interface ParsedRow {
   isUnregistered: boolean;
   isSkipped: boolean;   // rejected by user in confirmation dialog
   isValid: boolean;
+  voucherType?: 'invoices' | 'debitNote';  // For mixed uploads, detected from "Vch Type" column
   errorCode?: 'DUPLICATE_REF' | 'MISSING_DATA' | 'INVALID_DATE' | 'ZERO_AMOUNT' | 'NEGATIVE_AMOUNT';
   errorDetail?: string;
 }
@@ -114,6 +115,16 @@ const SYSTEM_COLUMNS = {
     { key: 'amount', label: 'Credit Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
     { key: 'reason', label: 'Reason / Description', required: false, icon: <Info className="w-3 h-3" /> },
   ],
+  mixed: [
+    { key: 'date', label: 'Date', required: true, icon: <FileUp className="w-3 h-3" /> },
+    { key: 'supplierName', label: 'Particulars / Supplier', required: true, icon: <UserPlus className="w-3 h-3" /> },
+    { key: 'vchType', label: 'Vch Type', required: false, icon: <FileSpreadsheet className="w-3 h-3" /> },
+    { key: 'refNumber', label: 'Vch No. / Reference', required: true, icon: <ReceiptText className="w-3 h-3" /> },
+    { key: 'amount', label: 'Debit / Transaction Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
+    { key: 'creditAmount', label: 'Credit Amount (Optional)', required: false, icon: <CreditCard className="w-3 h-3" /> },
+    { key: 'creditDays', label: 'Credit Days', required: false, icon: <RefreshCw className="w-3 h-3" /> },
+    { key: 'reason', label: 'Reason / Description', required: false, icon: <Info className="w-3 h-3" /> },
+  ],
 };
 
 // ─── PRESET MAPPINGS (Tally standard exports) ────────────────────────────────
@@ -138,6 +149,18 @@ const BUILTIN_PRESETS: Record<string, { label: string; type: 'invoices' | 'payme
       date: 'Date',
       supplierName: "Party's Name",
       amount: 'Amount',
+    },
+  },
+  tally_mixed_purchase_debit: {
+    label: 'Tally — Mixed (Purchases + Debit Notes)',
+    type: 'both',
+    mapping: {
+      date: 'Date',
+      supplierName: 'Particulars',
+      vchType: 'Vch Type',
+      refNumber: 'Vch No.',
+      amount: 'Debit Amount',
+      creditAmount: 'Credit Amount',
     },
   },
   duesflow_standard_invoice: {
@@ -211,6 +234,8 @@ export default function UploadPage() {
   const [batchMemo, setBatchMemo] = useState('');
   const [accountingPeriod, setAccountingPeriod] = useState('');
   const [fallbackDate, setFallbackDate] = useState<string>('');
+  const [isMixedMode, setIsMixedMode] = useState(false);  // Auto-detect mixed mode
+  const [vchTypeColumn, setVchTypeColumn] = useState<string>('');  // Track the Vch Type column
 
   // Supplier confirmation dialog
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -271,6 +296,23 @@ export default function UploadPage() {
           setFileHeaders(headers);
           setFileData(data);
           detectFileMetadata(data);
+          
+          // Auto-detect mixed mode: Check for "Vch Type" column
+          const vchTypeIdx = headers.findIndex(h => 
+            h.toLowerCase().includes('vch type') || 
+            h.toLowerCase().includes('vchtype') ||
+            h.toLowerCase() === 'type'
+          );
+          
+          if (vchTypeIdx !== -1) {
+            setIsMixedMode(true);
+            setVchTypeColumn(headers[vchTypeIdx]);
+            setImportType('invoices');  // Default for display, won't be used in mixed mode
+          } else {
+            setIsMixedMode(false);
+            setVchTypeColumn('');
+          }
+          
           setCurrentStep('upload');
         }
       } catch {
@@ -368,6 +410,14 @@ export default function UploadPage() {
     return 0;
   };
 
+  const detectVoucherType = (vchTypeRaw: string): 'invoices' | 'debitNote' | null => {
+    if (!vchTypeRaw) return null;
+    const vchType = vchTypeRaw.toLowerCase().trim();
+    if (vchType.includes('purchase') || vchType.includes('invoice') || vchType === 'pur') return 'invoices';
+    if (vchType.includes('debit') || vchType === 'dn') return 'debitNote';
+    return null;
+  };
+
   const parseDate = (val: any) => {
     if (!val) return new Date();
     if (val instanceof Date) return val;
@@ -395,39 +445,83 @@ export default function UploadPage() {
       setError('Please upload a valid file first.');
       return;
     }
+    setIsMappingMode(true);
     setCurrentStep('mapping');
   };
 
   // ── Process Mapping → detect new suppliers → show confirm dialog ──────────
 
   const processMapping = () => {
-    const currentCols = SYSTEM_COLUMNS[importType];
-    // Allow date to be optional if we have a fallback date
-    const missing = currentCols.filter(c => {
-      if (c.key === 'date' && fallbackDate) return false; // Date is optional if fallback provided
-      return c.required && !mappingState[c.key];
-    });
+    // In mixed mode, we only need Date, Supplier Name, and Amount columns
+    let requiredColumns: string[] = [];
+    
+    if (isMixedMode) {
+      requiredColumns = ['supplierName', 'date', 'amount'];
+    } else {
+      const currentCols = SYSTEM_COLUMNS[importType];
+      requiredColumns = currentCols.filter(c => c.required && !(c.key === 'date' && fallbackDate)).map(c => c.key);
+    }
+    
+    // Check mandatory mappings for mixed mode
+    const missing = requiredColumns.filter(key => !mappingState[key]);
     if (missing.length > 0) {
-      setError(`Mandatory mapping required: ${missing.map(m => m.label).join(', ')}`);
+      const labels = missing.map(k => {
+        if (k === 'supplierName') return 'Supplier / Party';
+        if (k === 'date') return 'Date';
+        if (k === 'amount') return 'Amount';
+        return k;
+      });
+      setError(`Mandatory mapping required: ${labels.join(', ')}`);
       return;
     }
 
     setError(null);
     const headerIndices: Record<string, number> = {};
-    currentCols.forEach(sys => {
-      const mappedHeader = mappingState[sys.key];
+    
+    // Get indices for required columns
+    requiredColumns.forEach(key => {
+      const mappedHeader = mappingState[key];
       if (mappedHeader) {
         const idx = fileHeaders.indexOf(mappedHeader);
-        if (idx !== -1) headerIndices[sys.key] = idx;
+        if (idx !== -1) headerIndices[key] = idx;
       }
     });
 
-    const unindexed = currentCols.filter(c => {
-      if (c.key === 'date' && fallbackDate) return false; // Date is optional if fallback provided
-      return c.required && headerIndices[c.key] === undefined;
+    // Get optional indices
+    ['creditDays', 'reason'].forEach(key => {
+      const mappedHeader = mappingState[key];
+      if (mappedHeader) {
+        const idx = fileHeaders.indexOf(mappedHeader);
+        if (idx !== -1) headerIndices[key] = idx;
+      }
     });
+
+    // In mixed mode, get the Vch Type column index (can be auto-detected or user-mapped)
+    let vchTypeIndex = -1;
+    if (isMixedMode) {
+      // First check if user explicitly mapped vchType
+      if (mappingState['vchType']) {
+        vchTypeIndex = fileHeaders.indexOf(mappingState['vchType']);
+      }
+      // Otherwise use auto-detected column
+      if (vchTypeIndex === -1 && vchTypeColumn) {
+        vchTypeIndex = fileHeaders.indexOf(vchTypeColumn);
+      }
+    }
+
+    const unindexed = requiredColumns.filter(key => {
+      if (key === 'date' && fallbackDate) return false;
+      return headerIndices[key] === undefined;
+    });
+    
     if (unindexed.length > 0) {
-      setError(`Could not find indices for: ${unindexed.map(u => u.label).join(', ')}. Please re-map.`);
+      const labels = unindexed.map(u => {
+        if (u === 'supplierName') return 'Party';
+        if (u === 'date') return 'Date';
+        if (u === 'amount') return 'Amount';
+        return u;
+      });
+      setError(`Could not find indices for: ${labels.join(', ')}. Please re-map.`);
       return;
     }
 
@@ -436,11 +530,28 @@ export default function UploadPage() {
 
     fileData.slice(1).forEach((row: any[], idx: number) => {
       if (!row || row.length === 0) return;
-      const refNoRaw = row[headerIndices['refNumber']];
+      
+      // Get basic fields
+      const refNoRaw = row[headerIndices['refNumber']] || row[0];  // Fallback to first column if no mapping
       const dateVal = row[headerIndices['date']];
       const supplierNameRaw = row[headerIndices['supplierName']];
       const amountRaw = row[headerIndices['amount']];
       const reasonRaw = row[headerIndices['reason']];
+      
+      // Get voucher type for mixed mode
+      let detectedType: 'invoices' | 'debitNote' = 'invoices';
+      if (isMixedMode && vchTypeIndex !== -1) {
+        const vchTypeRaw = row[vchTypeIndex]?.toString() || '';
+        const detected = detectVoucherType(vchTypeRaw);
+        if (detected) {
+          detectedType = detected;
+        } else {
+          // Skip rows with unrecognized voucher types
+          return;
+        }
+      } else if (!isMixedMode) {
+        detectedType = importType as any;
+      }
       
       const refNumber = refNoRaw?.toString().trim() || '';
       const supplierName = supplierNameRaw?.toString().trim() || '';
@@ -489,7 +600,7 @@ export default function UploadPage() {
       const supplier = suppliers?.find(
         s => s.name.toLowerCase().trim() === supplierName.toLowerCase().trim()
       );
-      const dueDate = importType === 'invoices' && isValid ? addDays(dateObj, creditDays) : null;
+      const dueDate = detectedType === 'invoices' && isValid ? addDays(dateObj, creditDays) : null;
 
       parsed.push({
         id: `row-${idx}`,
@@ -497,9 +608,10 @@ export default function UploadPage() {
         date: isValidDate(dateObj) ? format(dateObj, 'yyyy-MM-dd') : 'Invalid',
         supplierName,
         amount,
-        creditDays: importType === 'invoices' ? creditDays : undefined,
+        creditDays: detectedType === 'invoices' ? creditDays : undefined,
         dueDate: dueDate ? format(dueDate, 'yyyy-MM-dd') : undefined,
-        reason: (importType === 'debitNote' || importType === 'creditNote') ? reason : undefined,
+        reason: (detectedType === 'debitNote') ? reason : undefined,
+        voucherType: detectedType,
         isUnregistered: !supplier,
         isSkipped: !isValid, // Auto-skip invalid rows
         isValid,
@@ -635,7 +747,10 @@ export default function UploadPage() {
       }
 
       if (supplierId) {
-        if (importType === 'invoices') {
+        // Determine the actual import type for this row (in mixed mode, use voucherType)
+        const rowImportType = isMixedMode ? (row.voucherType || 'invoices') : importType;
+        
+        if (rowImportType === 'invoices') {
           await addDocumentNonBlocking(collection(firestore, 'invoices'), {
             invoiceNumber: row.refNumber,
             supplierId,
@@ -648,7 +763,7 @@ export default function UploadPage() {
             status: 'Pending',
             createdAt: serverTimestamp(),
           });
-        } else if (importType === 'payments') {
+        } else if (rowImportType === 'payments') {
           const payRef = await addDoc(collection(firestore, 'payments'), {
             paymentNumber: row.refNumber,
             supplierId,
@@ -661,7 +776,7 @@ export default function UploadPage() {
           });
           // Apply FIFO automatically
           await applyFIFO(supplierId, row.amount, payRef.id, selectedBranchId);
-        } else if (importType === 'debitNote') {
+        } else if (rowImportType === 'debitNote') {
           await addDocumentNonBlocking(collection(firestore, 'debitNotes'), {
             referenceNumber: row.refNumber,
             supplierId,
@@ -672,7 +787,7 @@ export default function UploadPage() {
             createdAt: serverTimestamp(),
             createdBy: user.uid,
           });
-        } else if (importType === 'creditNote') {
+        } else if (rowImportType === 'creditNote') {
           await addDocumentNonBlocking(collection(firestore, 'creditNotes'), {
             referenceNumber: row.refNumber,
             supplierId,
@@ -698,7 +813,7 @@ export default function UploadPage() {
     // Write upload history
     try {
       await addDoc(collection(firestore, 'uploadHistory'), {
-        type: importType,
+        type: isMixedMode ? 'mixed' : importType,
         branchId: selectedBranchId,
         uploadedBy: user.uid,
         uploadedAt: serverTimestamp(),
@@ -846,25 +961,32 @@ export default function UploadPage() {
             </Button>
           </Link>
           <div className="h-8 w-px bg-slate-100 mx-1" />
-          <Tabs defaultValue="invoices" value={importType} onValueChange={(v: any) => {
-            if (currentStep !== 'upload' && !confirm('Switching import type will reset your current progress. Proceed?')) return;
-            setImportType(v);
-            setFileData([]);
-            setFileHeaders([]);
-            setPreviewData([]);
-            setMappingState({});
-            setFile(null);
-            setSuccess(false);
-            setCurrentStep('upload');
-            setFallbackDate('');
-          }} className="w-[360px]">
-            <TabsList className="grid w-full grid-cols-4 h-9 bg-slate-100/50 p-1 rounded-full">
-              <TabsTrigger value="invoices" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Purchases</TabsTrigger>
-              <TabsTrigger value="payments" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Payments</TabsTrigger>
-              <TabsTrigger value="debitNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Debit Notes</TabsTrigger>
-              <TabsTrigger value="creditNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Credit Notes</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {isMixedMode ? (
+            <div className="px-4 py-2 bg-blue-50/80 border border-blue-100 rounded-full flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Mixed Mode: 2 Types</span>
+            </div>
+          ) : (
+            <Tabs defaultValue="invoices" value={importType} onValueChange={(v: any) => {
+              if (currentStep !== 'upload' && !confirm('Switching import type will reset your current progress. Proceed?')) return;
+              setImportType(v);
+              setFileData([]);
+              setFileHeaders([]);
+              setPreviewData([]);
+              setMappingState({});
+              setFile(null);
+              setSuccess(false);
+              setCurrentStep('upload');
+              setFallbackDate('');
+            }} className="w-[360px]">
+              <TabsList className="grid w-full grid-cols-4 h-9 bg-slate-100/50 p-1 rounded-full">
+                <TabsTrigger value="invoices" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Purchases</TabsTrigger>
+                <TabsTrigger value="payments" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Payments</TabsTrigger>
+                <TabsTrigger value="debitNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Debit Notes</TabsTrigger>
+                <TabsTrigger value="creditNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Credit Notes</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
       </header>
 
@@ -1072,38 +1194,80 @@ export default function UploadPage() {
                 </CardHeader>
 
                 <CardContent className="p-8 space-y-8">
+                  {/* Mixed Mode Info */}
+                  {isMixedMode && (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-600" />
+                        <p className="text-xs font-bold text-blue-700">Mixed Voucher Mode Detected</p>
+                      </div>
+                      <p className="text-[11px] text-blue-600">File contains "{vchTypeColumn}" column with multiple voucher types (Purchases & Debit Notes). Only essential columns need to be mapped.</p>
+                    </div>
+                  )}
+                  
                   {/* Mapping Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
-                    {SYSTEM_COLUMNS[importType].map((sysCol) => (
-                      <div key={sysCol.key} className="space-y-3">
-                        <div className="flex items-center justify-between px-1">
-                          <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
-                            {sysCol.icon} {sysCol.label} {sysCol.required && <span className="text-red-500">*</span>}
-                          </Label>
-                          {mappingState[sysCol.key] && (
-                            <Badge variant="outline" className="bg-green-50 text-green-600 border-green-100 text-[9px] uppercase">Mapped</Badge>
-                          )}
+                    {isMixedMode ? (
+                      // Mixed mode: show all Tally columns
+                      SYSTEM_COLUMNS['mixed'].map((sysCol) => (
+                        <div key={sysCol.key} className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
+                              {sysCol.icon} {sysCol.label} {sysCol.required && <span className="text-red-500">*</span>}
+                            </Label>
+                            {mappingState[sysCol.key] && (
+                              <Badge variant="outline" className="bg-green-50 text-green-600 border-green-100 text-[9px] uppercase">Mapped</Badge>
+                            )}
+                          </div>
+                          <Select
+                            value={mappingState[sysCol.key] || ''}
+                            onValueChange={(val) => setMappingState(prev => ({ ...prev, [sysCol.key]: val }))}
+                          >
+                            <SelectTrigger className="h-12 bg-slate-50 border-none rounded-2xl px-5 text-sm font-medium">
+                              <SelectValue placeholder={`Select column …`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="null_none">-- No Mapping --</SelectItem>
+                              {fileHeaders.map(header => (
+                                <SelectItem key={header} value={header}>{header}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <Select
-                          value={mappingState[sysCol.key] || ''}
-                          onValueChange={(val) => setMappingState(prev => ({ ...prev, [sysCol.key]: val }))}
-                        >
-                          <SelectTrigger className="h-12 bg-slate-50 border-none rounded-2xl px-5 text-sm font-medium">
-                            <SelectValue placeholder={`Select column …`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="null_none">-- No Mapping --</SelectItem>
-                            {fileHeaders.map(header => (
-                              <SelectItem key={header} value={header}>{header}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      // Regular mode: show all columns for selected type
+                      SYSTEM_COLUMNS[importType].map((sysCol) => (
+                        <div key={sysCol.key} className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
+                              {sysCol.icon} {sysCol.label} {sysCol.required && <span className="text-red-500">*</span>}
+                            </Label>
+                            {mappingState[sysCol.key] && (
+                              <Badge variant="outline" className="bg-green-50 text-green-600 border-green-100 text-[9px] uppercase">Mapped</Badge>
+                            )}
+                          </div>
+                          <Select
+                            value={mappingState[sysCol.key] || ''}
+                            onValueChange={(val) => setMappingState(prev => ({ ...prev, [sysCol.key]: val }))}
+                          >
+                            <SelectTrigger className="h-12 bg-slate-50 border-none rounded-2xl px-5 text-sm font-medium">
+                              <SelectValue placeholder={`Select column …`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="null_none">-- No Mapping --</SelectItem>
+                              {fileHeaders.map(header => (
+                                <SelectItem key={header} value={header}>{header}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   {/* Invoice Date Fallback Option (for invoice/DN/CN types) */}
-                  {(importType === 'invoices' || importType === 'debitNote' || importType === 'creditNote') && !mappingState['date'] && (
+                  {(importType === 'invoices' || importType === 'debitNote' || importType === 'creditNote' || isMixedMode) && !mappingState['date'] && (
                     <div className="border-l-4 border-amber-400 bg-amber-50/80 p-5 rounded-xl space-y-3">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -1187,12 +1351,15 @@ export default function UploadPage() {
                     <Table>
                       <TableHeader className="bg-slate-50/80 sticky top-0 backdrop-blur-md z-10">
                         <TableRow className="hover:bg-transparent border-b-slate-100">
-                          <TableHead className="w-[140px] text-[10px] font-black uppercase tracking-widest py-5 pl-8">Ref / Invoice</TableHead>
-                          <TableHead className="text-[10px] font-black uppercase tracking-widest py-5">Party</TableHead>
-                          <TableHead className="text-right text-[10px] font-black uppercase tracking-widest py-5">Amount</TableHead>
-                          <TableHead className="text-center text-[10px] font-black uppercase tracking-widest py-5 px-8">
-                            {importType === 'invoices' ? 'Due Date' : 'Date'}
-                          </TableHead>
+                          <TableHead className="w-[90px] text-[10px] font-black uppercase tracking-widest py-5 pl-8">Date</TableHead>
+                          <TableHead className="w-[140px] text-[10px] font-black uppercase tracking-widest py-5">Particulars</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest py-5">Vch Type</TableHead>
+                          <TableHead className="w-[110px] text-[10px] font-black uppercase tracking-widest py-5">Vch No.</TableHead>
+                          <TableHead className="text-right text-[10px] font-black uppercase tracking-widest py-5">Debit Amt</TableHead>
+                          {isMixedMode && (
+                            <TableHead className="text-right text-[10px] font-black uppercase tracking-widest py-5">Credit Amt</TableHead>
+                          )}
+                          <TableHead className="text-center text-[10px] font-black uppercase tracking-widest py-5 px-4 pr-8">Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1207,33 +1374,44 @@ export default function UploadPage() {
                                 : ''
                             } hover:bg-slate-50/50 transition-colors border-b-slate-50`}
                           >
-                            <TableCell className="font-mono text-[11px] text-slate-500 font-bold pl-8 py-5 tracking-tight">
+                            <TableCell className="text-[11px] text-slate-600 font-bold pl-8 py-5 whitespace-nowrap">
+                              {row.date}
+                            </TableCell>
+                            <TableCell className="text-[12px] font-bold text-slate-800 py-5">
+                              {row.supplierName}
+                            </TableCell>
+                            <TableCell className="text-[10px] font-bold py-5">
+                              {row.voucherType === 'invoices' ? (
+                                <Badge className="bg-blue-50 text-blue-700 border-blue-100 text-[9px] uppercase">Purchase</Badge>
+                              ) : (
+                                <Badge className="bg-orange-50 text-orange-700 border-orange-100 text-[9px] uppercase">Debit Note</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-[11px] text-slate-500 font-bold py-5 tracking-tight">
                               {row.refNumber}
                             </TableCell>
-                            <TableCell className="py-5">
-                              <div className="flex items-center gap-3">
-                                <span className="text-[13px] font-bold text-slate-800">{row.supplierName}</span>
-                                {row.isSkipped ? (
-                                  <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-50 text-red-500 border-red-100">
-                                    Skipped
-                                  </Badge>
-                                ) : row.isUnregistered ? (
-                                  <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border-blue-100">
-                                    New Party
-                                  </Badge>
-                                ) : null}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-black text-[13px] py-5">
+                            <TableCell className="text-right font-mono font-black text-[12px] py-5">
                               {row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center text-[11px] font-bold text-slate-500 py-5 pr-8">
-                              <div className="flex flex-col items-center">
-                                <span>{importType === 'invoices' ? row.dueDate : row.date}</span>
-                                {importType === 'invoices' && (
-                                  <span className="text-[9px] opacity-50 uppercase tracking-tighter mt-0.5">{row.creditDays}d Term</span>
-                                )}
-                              </div>
+                            {isMixedMode && (
+                              <TableCell className="text-right font-mono text-[12px] py-5 text-slate-400">
+                                —
+                              </TableCell>
+                            )}
+                            <TableCell className="text-center py-5 px-4 pr-8">
+                              {row.isSkipped ? (
+                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-50 text-red-500 border-red-100">
+                                  Skipped
+                                </Badge>
+                              ) : row.isUnregistered ? (
+                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border-blue-100">
+                                  New
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-50 text-green-600 border-green-100">
+                                  Ready
+                                </Badge>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
