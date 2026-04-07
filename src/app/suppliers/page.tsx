@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useCollection, useFirestore, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { suppliersService } from '@/lib/api/services';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -37,6 +39,7 @@ import {
 
 export default function SuppliersPage() {
   const firestore = useFirestore();
+  const { toast } = useToast();
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'suppliers');
@@ -48,6 +51,7 @@ export default function SuppliersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
+  const [creating, setCreating] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -63,16 +67,39 @@ export default function SuppliersPage() {
     defaultCreditDays: 30,
   });
 
-  const handleAddSupplier = () => {
-    if (!newSupplier.name || !firestore) return;
-    addDocumentNonBlocking(collection(firestore, 'suppliers'), {
-      ...newSupplier,
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setNewSupplier({ name: '', category: '', email: '', phone: '', address: '', vatNumber: '', defaultCreditDays: 30 });
-    setIsDialogOpen(false);
+  const handleAddSupplier = async () => {
+    if (!newSupplier.name) return;
+    
+    setCreating(true);
+    try {
+      const result = await suppliersService.createSupplier({
+        ...newSupplier,
+        status: 'active',
+      });
+
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: `Supplier "${newSupplier.name}" created successfully`,
+        });
+        setNewSupplier({ name: '', category: '', email: '', phone: '', address: '', vatNumber: '', defaultCreditDays: 30 });
+        setIsDialogOpen(false);
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to create supplier',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create supplier',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreating(false);
+    }
   };
 
   // Categories for filter
@@ -281,8 +308,19 @@ export default function SuppliersPage() {
                 </div>
 
                 <div className="pt-2">
-                  <Button className="w-full rounded-full h-12 font-black uppercase tracking-widest text-xs shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all" onClick={handleAddSupplier}>
-                    Complete Registration
+                  <Button 
+                    className="w-full rounded-full h-12 font-black uppercase tracking-widest text-xs shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all" 
+                    onClick={handleAddSupplier}
+                    disabled={creating}
+                  >
+                    {creating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Complete Registration'
+                    )}
                   </Button>
                 </div>
               </div>

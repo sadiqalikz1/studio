@@ -124,8 +124,8 @@ export default function LedgerDetailPage() {
           supplierName: supplierName,
           referenceNumber: dn.referenceNumber || '',
           amount: amount,
-          debitAmount: amount,
-          creditAmount: 0,
+          debitAmount: 0,  // Debit notes are recorded as credits (they reduce balance owed)
+          creditAmount: amount,
           reason: dn.reason || '',
           branchId: dn.branchId || '',
           supplierId: dn.supplierId || '',

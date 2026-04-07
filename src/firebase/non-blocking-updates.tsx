@@ -196,7 +196,10 @@ export async function setDocSafe(docRef: DocumentReference, data: any, options?:
     });
   }
 
-  return setDoc(docRef, data, options);
+  if (options) {
+    return setDoc(docRef, data, options);
+  }
+  return setDoc(docRef, data);
 }
 
 /**

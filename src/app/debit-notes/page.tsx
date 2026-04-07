@@ -21,6 +21,8 @@ import { format } from 'date-fns';
 import { useCollection, useMemoFirebase, useFirestore, useUser, addDocumentNonBlocking } from '@/firebase';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import { useUserRole } from '@/hooks/use-user-role';
+import { notesService } from '@/lib/api/services';
+import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
 interface DebitNote {
@@ -37,6 +39,7 @@ interface DebitNote {
 export default function DebitNotesPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { toast } = useToast();
   const { isAdmin, isLoading: isRoleLoading } = useUserRole();
 
   // State
@@ -122,7 +125,11 @@ export default function DebitNotesPage() {
 
   const handleCreateDebitNote = async () => {
     if (!firestore || !user || !newDNForm.supplierName.trim() || !newDNForm.referenceNumber.trim() || !newDNForm.amount.trim() || !newDNForm.branchId) {
-      alert('Please fill all required fields');
+      toast({
+        title: 'Error',
+        description: 'Please fill all required fields',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -132,34 +139,53 @@ export default function DebitNotesPage() {
       const supplierId = supplier?.id || '';
 
       if (!supplierId) {
-        alert('Supplier not found. Please select an existing supplier.');
+        toast({
+          title: 'Error',
+          description: 'Supplier not found. Please select an existing supplier.',
+          variant: 'destructive',
+        });
         setCreating(false);
         return;
       }
 
-      await addDocumentNonBlocking(collection(firestore, 'debitNotes'), {
+      const result = await notesService.createDebitNote({
         date: newDNForm.date,
         supplierId,
         referenceNumber: newDNForm.referenceNumber.trim(),
         amount: parseFloat(newDNForm.amount),
         reason: newDNForm.reason.trim() || 'Manual Entry',
         branchId: newDNForm.branchId,
-        createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
 
-      setShowCreateDialog(false);
-      setNewDNForm({
-        date: format(new Date(), 'yyyy-MM-dd'),
-        supplierName: '',
-        referenceNumber: '',
-        amount: '',
-        reason: '',
-        branchId: '',
-      });
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Debit note created successfully',
+        });
+        setShowCreateDialog(false);
+        setNewDNForm({
+          date: format(new Date(), 'yyyy-MM-dd'),
+          supplierName: '',
+          referenceNumber: '',
+          amount: '',
+          reason: '',
+          branchId: '',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to create debit note',
+          variant: 'destructive',
+        });
+      }
     } catch (err) {
       console.error('Error creating debit note', err);
-      alert('Failed to create debit note');
+      toast({
+        title: 'Error',
+        description: 'Failed to create debit note',
+        variant: 'destructive',
+      });
     }
     setCreating(false);
   };

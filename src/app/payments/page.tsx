@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, orderBy, doc, serverTimestamp } from 'firebase/firestore';
+import { paymentsService } from '@/lib/api/services';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Select, 
   SelectContent, 
@@ -14,7 +16,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { CreditCard, Info, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Info, CheckCircle2, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
@@ -23,6 +25,7 @@ import { useCurrency } from '@/hooks/use-currency';
 export default function PaymentsPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { toast } = useToast();
   const { formatCurrency, currencyCode } = useCurrency();
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
@@ -73,49 +76,53 @@ export default function PaymentsPage() {
     return distribution;
   }, [invoices, amount]);
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     if (!user || !selectedSupplierId || !amount || fifoDistribution.length === 0 || !firestore) return;
     
     setProcessing(true);
     
-    // 1. Record the Payment
-    const paymentData = {
-      paymentDate: format(new Date(), 'yyyy-MM-dd'),
-      amountPaid: parseFloat(amount),
-      paymentMethod: 'Bank Transfer',
-      referenceNumber: reference,
-      paidByUserId: user.uid,
-      createdAt: serverTimestamp(),
-      branchId: invoices?.[0]?.branchId || 'unknown'
-    };
+    try {
+      // Call server action to create payment with FIFO allocation
+      const result = await paymentsService.createPaymentWithFIFO({
+        supplierId: selectedSupplierId,
+        branchId: invoices?.[0]?.branchId || 'unknown',
+        paymentDate: format(new Date(), 'yyyy-MM-dd'),
+        amount: parseFloat(amount),
+        paymentMethod: 'Bank Transfer',
+        referenceNumber: reference,
+        uploadedByUserId: user.uid,
+        fifoDistribution: fifoDistribution.map(d => ({
+          invoiceId: d.invoiceId,
+          allocationAmount: d.allocation
+        }))
+      });
 
-    addDocumentNonBlocking(collection(firestore, 'payments'), paymentData)
-      .then((paymentRef) => {
-        // 2. Apply FIFO allocations to invoices
-        fifoDistribution.forEach(dist => {
-          const invRef = doc(firestore, 'invoices', dist.invoiceId);
-          const newBalance = dist.pending - dist.allocation;
-          
-          updateDocumentNonBlocking(invRef, {
-            remainingBalance: newBalance,
-            status: newBalance <= 0 ? 'Paid' : 'Partially Paid'
-          });
-
-          addDocumentNonBlocking(collection(firestore, 'invoiceAllocations'), {
-            paymentId: paymentRef?.id,
-            invoiceId: dist.invoiceId,
-            amountApplied: dist.allocation,
-            allocatedAt: serverTimestamp(),
-            branchId: invoices?.[0]?.branchId || 'unknown'
-          });
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: `Payment of ${formatCurrency(parseFloat(amount))} processed successfully`,
         });
-
-        setProcessing(false);
         setSuccess(true);
         setAmount('');
         setReference('');
+        setSelectedSupplierId('');
         setTimeout(() => setSuccess(false), 3000);
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to process payment',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to process payment',
+        variant: 'destructive',
       });
+    } finally {
+      setProcessing(false);
+    }
   };
 
   return (
@@ -179,7 +186,14 @@ export default function PaymentsPage() {
                 onClick={handleProcess}
                 disabled={processing || !amount || !selectedSupplierId}
               >
-                {processing ? 'Processing FIFO...' : 'Process Payment'}
+                {processing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing FIFO...
+                  </>
+                ) : (
+                  'Process Payment'
+                )}
               </Button>
 
               {success && (
