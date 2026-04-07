@@ -13,17 +13,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { UserPlus, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 
 export interface NewSupplierEntry {
   name: string;
   rowCount: number;
+  creditDays?: number;
 }
 
 interface NewSupplierConfirmDialogProps {
   open: boolean;
   suppliers: NewSupplierEntry[];
-  onConfirm: (confirmedNames: Set<string>) => void;
+  onConfirm: (confirmedNames: Set<string>, creditDaysMap: Map<string, number>) => void;
   onCancel: () => void;
 }
 
@@ -34,11 +36,18 @@ export function NewSupplierConfirmDialog({
   onCancel,
 }: NewSupplierConfirmDialogProps) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [creditDaysMap, setCreditDaysMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (open) {
       // Default: all checked (approved)
       setChecked(new Set(suppliers.map((s) => s.name)));
+      // Initialize credit days map with default value of 30
+      const newMap = new Map<string, number>();
+      suppliers.forEach(s => {
+        newMap.set(s.name, s.creditDays || 30);
+      });
+      setCreditDaysMap(newMap);
     }
   }, [open, suppliers]);
 
@@ -107,21 +116,26 @@ export function NewSupplierConfirmDialog({
 
           {suppliers.map((s) => {
             const isChecked = checked.has(s.name);
+            const creditDays = creditDaysMap.get(s.name) || 30;
             return (
               <div
                 key={s.name}
-                className={`flex items-center gap-4 p-3 rounded-2xl border transition-all cursor-pointer ${
+                className={`flex items-start gap-4 p-3 rounded-2xl border transition-all ${
                   isChecked
                     ? 'border-primary/20 bg-primary/5'
                     : 'border-red-100 bg-red-50/50'
                 }`}
-                onClick={() => toggle(s.name)}
               >
                 <Checkbox
                   id={`sup-${s.name}`}
                   checked={isChecked}
-                  onCheckedChange={() => toggle(s.name)}
-                  className="shrink-0"
+                  onCheckedChange={() => {
+                    const next = new Set(checked);
+                    if (next.has(s.name)) next.delete(s.name);
+                    else next.add(s.name);
+                    setChecked(next);
+                  }}
+                  className="shrink-0 mt-1"
                 />
                 <div className="flex-1 min-w-0">
                   <Label
@@ -133,6 +147,22 @@ export function NewSupplierConfirmDialog({
                   <p className="text-[10px] text-slate-400 font-medium mt-0.5">
                     {s.rowCount} {s.rowCount === 1 ? 'record' : 'records'} in this upload
                   </p>
+                  {isChecked && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Label className="text-[10px] font-bold text-slate-500">Credit Days:</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="365"
+                        value={creditDays}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 30;
+                          setCreditDaysMap(prev => new Map(prev).set(s.name, val));
+                        }}
+                        className="w-16 h-8 text-sm border-slate-200 rounded-lg"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="shrink-0">
                   {isChecked ? (
@@ -175,7 +205,7 @@ export function NewSupplierConfirmDialog({
               Back to Mapping
             </Button>
             <Button
-              onClick={() => onConfirm(checked)}
+              onClick={() => onConfirm(checked, creditDaysMap)}
               className="flex-1 rounded-full h-11 font-bold shadow-lg shadow-primary/25"
               disabled={approvedCount === 0 && suppliers.length > 0}
             >

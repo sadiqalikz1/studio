@@ -1,5 +1,6 @@
 
 export type Status = 'Pending' | 'Partially Paid' | 'Paid' | 'Overdue';
+export type TransactionType = 'invoice' | 'debitNote' | 'creditNote';
 
 export interface Branch {
   id: string;
@@ -29,6 +30,32 @@ export interface Invoice {
   paidAmount: number;
   remainingBalance: number;
   status: Status;
+}
+
+export interface DebitNote {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  referenceNumber: string;
+  date: string;
+  amount: number;
+  reason: string;
+  description?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface CreditNote {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  referenceNumber: string;
+  date: string;
+  amount: number;
+  reason: string;
+  description?: string;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface PaymentRecord {

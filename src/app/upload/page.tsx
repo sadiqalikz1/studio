@@ -68,6 +68,7 @@ interface ParsedRow {
   amount: number;
   creditDays?: number;
   dueDate?: string;
+  reason?: string;
   isUnregistered: boolean;
   isSkipped: boolean;   // rejected by user in confirmation dialog
   isValid: boolean;
@@ -99,11 +100,25 @@ const SYSTEM_COLUMNS = {
     { key: 'supplierName', label: 'Party Name', required: true, icon: <UserPlus className="w-3 h-3" /> },
     { key: 'amount', label: 'Amount Paid', required: true, icon: <CreditCard className="w-3 h-3" /> },
   ],
+  debitNote: [
+    { key: 'refNumber', label: 'Debit Note No', required: true, icon: <ReceiptText className="w-3 h-3" /> },
+    { key: 'date', label: 'Debit Note Date', required: true, icon: <FileUp className="w-3 h-3" /> },
+    { key: 'supplierName', label: 'Supplier / Party', required: true, icon: <UserPlus className="w-3 h-3" /> },
+    { key: 'amount', label: 'Debit Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
+    { key: 'reason', label: 'Reason / Description', required: false, icon: <Info className="w-3 h-3" /> },
+  ],
+  creditNote: [
+    { key: 'refNumber', label: 'Credit Note No', required: true, icon: <ReceiptText className="w-3 h-3" /> },
+    { key: 'date', label: 'Credit Note Date', required: true, icon: <FileUp className="w-3 h-3" /> },
+    { key: 'supplierName', label: 'Supplier / Party', required: true, icon: <UserPlus className="w-3 h-3" /> },
+    { key: 'amount', label: 'Credit Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
+    { key: 'reason', label: 'Reason / Description', required: false, icon: <Info className="w-3 h-3" /> },
+  ],
 };
 
 // ─── PRESET MAPPINGS (Tally standard exports) ────────────────────────────────
 
-const BUILTIN_PRESETS: Record<string, { label: string; type: 'invoices' | 'payments' | 'both'; mapping: Record<string, string> }> = {
+const BUILTIN_PRESETS: Record<string, { label: string; type: 'invoices' | 'payments' | 'debitNote' | 'creditNote' | 'both'; mapping: Record<string, string> }> = {
   tally_purchase: {
     label: 'Tally — Purchase Register',
     type: 'invoices',
@@ -146,6 +161,28 @@ const BUILTIN_PRESETS: Record<string, { label: string; type: 'invoices' | 'payme
       amount: 'Amount Paid',
     },
   },
+  duesflow_standard_debit_note: {
+    label: 'DuesFlow Standard — Debit Notes',
+    type: 'debitNote',
+    mapping: {
+      refNumber: 'Debit Note No',
+      date: 'Date',
+      supplierName: 'Supplier Name',
+      amount: 'Amount',
+      reason: 'Reason',
+    },
+  },
+  duesflow_standard_credit_note: {
+    label: 'DuesFlow Standard — Credit Notes',
+    type: 'creditNote',
+    mapping: {
+      refNumber: 'Credit Note No',
+      date: 'Date',
+      supplierName: 'Supplier Name',
+      amount: 'Amount',
+      reason: 'Reason',
+    },
+  },
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -166,18 +203,20 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [previewData, setPreviewData] = useState<ParsedRow[]>([]);
-  const [importType, setImportType] = useState<'invoices' | 'payments'>('invoices');
+  const [importType, setImportType] = useState<'invoices' | 'payments' | 'debitNote' | 'creditNote'>('invoices');
   const [mappingState, setMappingState] = useState<Record<string, string>>({});
   const [isMappingMode, setIsMappingMode] = useState(false);
   const [currentStep, setCurrentStep] = useState<'upload' | 'mapping' | 'verify' | 'commit' | 'success'>('upload');
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   const [batchMemo, setBatchMemo] = useState('');
   const [accountingPeriod, setAccountingPeriod] = useState('');
+  const [fallbackDate, setFallbackDate] = useState<string>('');
 
   // Supplier confirmation dialog
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [newSuppliersToConfirm, setNewSuppliersToConfirm] = useState<NewSupplierEntry[]>([]);
   const [pendingParsed, setPendingParsed] = useState<ParsedRow[]>([]);
+  const [newSupplierCreditDays, setNewSupplierCreditDays] = useState<Map<string, number>>(new Map());
 
   // Save preset dialog
   const [showSavePreset, setShowSavePreset] = useState(false);
@@ -363,7 +402,11 @@ export default function UploadPage() {
 
   const processMapping = () => {
     const currentCols = SYSTEM_COLUMNS[importType];
-    const missing = currentCols.filter(c => c.required && !mappingState[c.key]);
+    // Allow date to be optional if we have a fallback date
+    const missing = currentCols.filter(c => {
+      if (c.key === 'date' && fallbackDate) return false; // Date is optional if fallback provided
+      return c.required && !mappingState[c.key];
+    });
     if (missing.length > 0) {
       setError(`Mandatory mapping required: ${missing.map(m => m.label).join(', ')}`);
       return;
@@ -379,7 +422,10 @@ export default function UploadPage() {
       }
     });
 
-    const unindexed = currentCols.filter(c => c.required && headerIndices[c.key] === undefined);
+    const unindexed = currentCols.filter(c => {
+      if (c.key === 'date' && fallbackDate) return false; // Date is optional if fallback provided
+      return c.required && headerIndices[c.key] === undefined;
+    });
     if (unindexed.length > 0) {
       setError(`Could not find indices for: ${unindexed.map(u => u.label).join(', ')}. Please re-map.`);
       return;
@@ -394,10 +440,12 @@ export default function UploadPage() {
       const dateVal = row[headerIndices['date']];
       const supplierNameRaw = row[headerIndices['supplierName']];
       const amountRaw = row[headerIndices['amount']];
+      const reasonRaw = row[headerIndices['reason']];
       
       const refNumber = refNoRaw?.toString().trim() || '';
       const supplierName = supplierNameRaw?.toString().trim() || '';
       const amount = cleanNumeric(amountRaw);
+      const reason = reasonRaw?.toString().trim() || '';
       const cdIdx = headerIndices['creditDays'];
       const creditDays = cdIdx !== undefined ? parseInt(row[cdIdx]) || 30 : 30;
 
@@ -423,8 +471,14 @@ export default function UploadPage() {
         errorDetail = `Duplicate reference found in file: ${refNumber}`;
       }
 
-      const dateObj = parseDate(dateVal);
-      if (!isValidDate(dateObj)) {
+      const dateObj = headerIndices['date'] !== undefined ? parseDate(dateVal) : (fallbackDate ? parseDate(fallbackDate) : new Date());
+      
+      // If no date mapping and no fallback, mark as invalid
+      if (headerIndices['date'] === undefined && !fallbackDate) {
+        isValid = false;
+        errorCode = 'INVALID_DATE';
+        errorDetail = 'Date column not mapped and no fallback date set.';
+      } else if (!isValidDate(dateObj)) {
         isValid = false;
         errorCode = 'INVALID_DATE';
         errorDetail = 'Could not parse date format.';
@@ -445,6 +499,7 @@ export default function UploadPage() {
         amount,
         creditDays: importType === 'invoices' ? creditDays : undefined,
         dueDate: dueDate ? format(dueDate, 'yyyy-MM-dd') : undefined,
+        reason: (importType === 'debitNote' || importType === 'creditNote') ? reason : undefined,
         isUnregistered: !supplier,
         isSkipped: !isValid, // Auto-skip invalid rows
         isValid,
@@ -480,11 +535,15 @@ export default function UploadPage() {
     }
   };
 
-  const handleNewSupplierConfirm = (confirmedNames: Set<string>) => {
+  const handleNewSupplierConfirm = (confirmedNames: Set<string>, creditDaysMap: Map<string, number>) => {
+    // Store credit days for later use in commitImport
+    setNewSupplierCreditDays(creditDaysMap);
+    
     // Mark rows for skipped suppliers
     const updated = pendingParsed.map(row => ({
       ...row,
       isSkipped: row.isSkipped || (row.isUnregistered && !confirmedNames.has(row.supplierName)),
+      creditDays: creditDaysMap.get(row.supplierName) || row.creditDays || 30,
     }));
     setPreviewData(updated);
     setCurrentStep('verify');
@@ -589,7 +648,7 @@ export default function UploadPage() {
             status: 'Pending',
             createdAt: serverTimestamp(),
           });
-        } else {
+        } else if (importType === 'payments') {
           const payRef = await addDoc(collection(firestore, 'payments'), {
             paymentNumber: row.refNumber,
             supplierId,
@@ -602,6 +661,28 @@ export default function UploadPage() {
           });
           // Apply FIFO automatically
           await applyFIFO(supplierId, row.amount, payRef.id, selectedBranchId);
+        } else if (importType === 'debitNote') {
+          await addDocumentNonBlocking(collection(firestore, 'debitNotes'), {
+            referenceNumber: row.refNumber,
+            supplierId,
+            branchId: selectedBranchId,
+            date: row.date,
+            amount: row.amount,
+            reason: row.reason || 'Imported Debit Note',
+            createdAt: serverTimestamp(),
+            createdBy: user.uid,
+          });
+        } else if (importType === 'creditNote') {
+          await addDocumentNonBlocking(collection(firestore, 'creditNotes'), {
+            referenceNumber: row.refNumber,
+            supplierId,
+            branchId: selectedBranchId,
+            date: row.date,
+            amount: row.amount,
+            reason: row.reason || 'Imported Credit Note',
+            createdAt: serverTimestamp(),
+            createdBy: user.uid,
+          });
         }
         imported++;
       } else {
@@ -643,12 +724,26 @@ export default function UploadPage() {
   // ── Template Download ─────────────────────────────────────────────────────
 
   const downloadTemplate = () => {
-    const headers = importType === 'invoices'
-      ? [['Voucher No.', 'Date', "Party's Name", 'Amount', 'Credit Period']]
-      : [['Voucher No.', 'Date', "Party's Name", 'Amount']];
+    let headers: string[][] = [];
+    let filename = 'DuesFlow_Template';
+    
+    if (importType === 'invoices') {
+      headers = [['Voucher No.', 'Date', "Party's Name", 'Amount', 'Credit Period']];
+      filename = 'DuesFlow_Purchase_Template.xlsx';
+    } else if (importType === 'payments') {
+      headers = [['Voucher No.', 'Date', "Party's Name", 'Amount']];
+      filename = 'DuesFlow_Payment_Template.xlsx';
+    } else if (importType === 'debitNote') {
+      headers = [['Debit Note No', 'Date', "Party's Name", 'Amount', 'Reason']];
+      filename = 'DuesFlow_DebitNote_Template.xlsx';
+    } else if (importType === 'creditNote') {
+      headers = [['Credit Note No', 'Date', "Party's Name", 'Amount', 'Reason']];
+      filename = 'DuesFlow_CreditNote_Template.xlsx';
+    }
+    
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(headers), 'Template');
-    XLSX.writeFile(wb, `DuesFlow_${importType === 'invoices' ? 'Purchase' : 'Payment'}_Template.xlsx`);
+    XLSX.writeFile(wb, filename);
   };
 
   // ── Guard ─────────────────────────────────────────────────────────────────
@@ -761,10 +856,13 @@ export default function UploadPage() {
             setFile(null);
             setSuccess(false);
             setCurrentStep('upload');
-          }} className="w-[240px]">
-            <TabsList className="grid w-full grid-cols-2 h-9 bg-slate-100/50 p-1 rounded-full">
-              <TabsTrigger value="invoices" className="rounded-full text-[10px] font-bold uppercase tracking-wider">Purchases</TabsTrigger>
-              <TabsTrigger value="payments" className="rounded-full text-[10px] font-bold uppercase tracking-wider">Payments</TabsTrigger>
+            setFallbackDate('');
+          }} className="w-[360px]">
+            <TabsList className="grid w-full grid-cols-4 h-9 bg-slate-100/50 p-1 rounded-full">
+              <TabsTrigger value="invoices" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Purchases</TabsTrigger>
+              <TabsTrigger value="payments" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Payments</TabsTrigger>
+              <TabsTrigger value="debitNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Debit Notes</TabsTrigger>
+              <TabsTrigger value="creditNote" className="rounded-full text-[9px] font-bold uppercase tracking-wider">Credit Notes</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -779,9 +877,9 @@ export default function UploadPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <div className="p-2 bg-primary/10 rounded-xl">
-                    {importType === 'invoices' ? <ReceiptText className="w-4 h-4 text-primary" /> : <CreditCard className="w-4 h-4 text-primary" />}
+                    {importType === 'invoices' ? <ReceiptText className="w-4 h-4 text-primary" /> : importType === 'payments' ? <CreditCard className="w-4 h-4 text-primary" /> : importType === 'debitNote' ? <AlertTriangle className="w-4 h-4 text-primary" /> : <CheckCircle2 className="w-4 h-4 text-primary" />}
                   </div>
-                  Sync configuration
+                  {importType === 'invoices' ? 'Purchase Sync' : importType === 'payments' ? 'Payment Sync' : importType === 'debitNote' ? 'Debit Note Sync' : 'Credit Note Sync'}
                 </CardTitle>
                 <CardDescription className="text-xs">Configure where and how data is synced.</CardDescription>
               </CardHeader>
@@ -1003,6 +1101,30 @@ export default function UploadPage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Invoice Date Fallback Option (for invoice/DN/CN types) */}
+                  {(importType === 'invoices' || importType === 'debitNote' || importType === 'creditNote') && !mappingState['date'] && (
+                    <div className="border-l-4 border-amber-400 bg-amber-50/80 p-5 rounded-xl space-y-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <p className="text-xs font-bold text-amber-800">Date Column Not Mapped</p>
+                      </div>
+                      <p className="text-xs text-amber-700">Since you haven't mapped a date column, set a default date for all records in this batch:</p>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="date"
+                          value={fallbackDate}
+                          onChange={(e) => setFallbackDate(e.target.value)}
+                          className="flex-1 h-10 rounded-xl border-amber-200 bg-white"
+                        />
+                        {fallbackDate && (
+                          <Badge className="bg-green-100 text-green-700 border-none text-xs font-bold">
+                            {format(new Date(fallbackDate), 'MMM d, yyyy')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {error && (
                     <Alert variant="destructive" className="bg-red-50 border-red-100 rounded-2xl">

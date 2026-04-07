@@ -13,7 +13,9 @@ import {
   LogOut,
   LogIn,
   Settings,
-  User
+  User,
+  BookOpen,
+  TrendingDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -32,7 +34,9 @@ import {
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Upload Purchases', href: '/upload', icon: FileUp },
+  { name: 'Upload Transactions', href: '/upload', icon: FileUp },
+  { name: 'Purchase Ledger', href: '/purchase-ledger', icon: BookOpen },
+  { name: 'Vendor Adjustments', href: '/adjustments', icon: TrendingDown },
   { name: 'Make Payments', href: '/payments', icon: CreditCard },
   { name: 'Ledger Reports', href: '/reports', icon: History },
   { name: 'Suppliers', href: '/suppliers', icon: Users },

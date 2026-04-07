@@ -41,6 +41,22 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // Debit Notes: Authenticated users can read/write (collection and documents)
+    match /debitNotes {
+      allow read: if isAuthenticated();
+      match /{debitNoteId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Credit Notes: Authenticated users can read/write (collection and documents)
+    match /creditNotes {
+      allow read: if isAuthenticated();
+      match /{creditNoteId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
     // Invoice Allocations (FIFO tracking)
     match /invoiceAllocations/{allocationId} {
       allow read, write: if isAuthenticated();
