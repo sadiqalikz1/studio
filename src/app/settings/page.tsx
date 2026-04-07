@@ -219,28 +219,22 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6 pt-8">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-xl border border-slate-100 bg-slate-50/30 gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-base font-bold text-slate-800 tracking-tight">New User Registration</Label>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${signupDisabled ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-                        {signupDisabled ? 'Currently Blocked' : 'Open for Signup'}
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Label className="text-base font-bold text-slate-800 tracking-tight">Public Registration</Label>
+                      <span className={`text-[10px] font-black px-2.5 py-1 rounded uppercase tracking-wider ${signupDisabled ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                        {signupDisabled ? 'Disabled' : 'Enabled'}
                       </span>
                     </div>
                     <p className="text-sm text-slate-500 max-w-md">
-                      Restrict access to pre-authorized team members only. When disabled, the Google Signup gate will reject all new connections.
+                      Toggle whether new users can sign up through the login page. When disabled, only pre-authorized users can access the application.
                     </p>
                   </div>
-                  <Button 
-                    variant={signupDisabled ? "default" : "destructive"}
-                    onClick={() => handleAdminToggle(!signupDisabled)}
-                    className={`h-11 px-6 rounded-xl font-bold transition-all shadow-lg ${signupDisabled ? 'bg-green-600 hover:bg-green-700 shadow-green-900/10' : 'bg-red-600 hover:bg-red-700 shadow-red-900/10'}`}
-                  >
-                    {signupDisabled ? (
-                      <span className="flex items-center gap-2 font-headline uppercase tracking-wide text-xs">Enable Registrations</span>
-                    ) : (
-                      <span className="flex items-center gap-2 font-headline uppercase tracking-wide text-xs">Disable New Signups</span>
-                    )}
-                  </Button>
+                  <Switch 
+                    checked={!signupDisabled}
+                    onCheckedChange={(checked) => handleAdminToggle(!checked)}
+                    className="h-11 w-20"
+                  />
                 </div>
                 
                 <div className="flex items-start gap-3 p-4 text-xs font-medium text-orange-800 bg-orange-50 rounded-xl border border-orange-100">

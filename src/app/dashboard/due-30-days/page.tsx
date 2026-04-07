@@ -35,15 +35,14 @@ export default function DueIn30DaysPage() {
   const dueUpcomingInvoices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const thirtyDaysLater = new Date(today);
-    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
 
     let filtered = (invoices || []).filter(inv => {
       if (inv.status === 'Paid') return false;
       if (!inv.dueDate) return false;
       const dueDate = new Date(inv.dueDate);
       dueDate.setHours(0, 0, 0, 0);
-      return dueDate >= today && dueDate <= thirtyDaysLater;
+      const diff = differenceInDays(dueDate, today);
+      return diff > 0 && diff <= 30;
     });
 
     if (searchRef) {

@@ -35,15 +35,14 @@ export default function DueIn7DaysPage() {
   const dueSoonInvoices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const sevenDaysLater = new Date(today);
-    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
     let filtered = (invoices || []).filter(inv => {
       if (inv.status === 'Paid') return false;
       if (!inv.dueDate) return false;
       const dueDate = new Date(inv.dueDate);
       dueDate.setHours(0, 0, 0, 0);
-      return dueDate >= today && dueDate <= sevenDaysLater;
+      const diff = differenceInDays(dueDate, today);
+      return diff > 0 && diff <= 7;
     });
 
     if (searchRef) {

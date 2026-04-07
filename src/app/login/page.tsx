@@ -84,7 +84,7 @@ export default function LoginPage() {
   };
 
   const showSignup = !isRegLoading && !signupDisabled;
-  const defaultTab = showSignup ? "signup" : "signin";
+  const defaultTab = "signin";
 
   if (isUserLoading) {
     return (

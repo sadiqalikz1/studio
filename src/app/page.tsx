@@ -58,12 +58,30 @@ export default function Dashboard() {
   }, [firestore, selectedBranch]);
   const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
 
+  const debitNotesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'debitNotes');
+  }, [firestore, user]);
+  const { data: debitNotes } = useCollection(debitNotesQuery);
+
   const stats = useMemo(() => {
     const invs = invoices || [];
+    const debitNotesData = debitNotes || [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const totalOutstanding = invs.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+    // Calculate total credit (invoices) outstanding
+    const totalCreditsOutstanding = invs
+      .filter(inv => inv.status !== 'Paid')
+      .reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
+    
+    // Calculate total debit (debit notes) outstanding
+    const totalDebitsOutstanding = debitNotesData
+      .filter(dn => dn.status !== 'Applied')
+      .reduce((sum, dn) => sum + (dn.amount || 0), 0);
+    
+    // Total Outstanding = Credits - Debits (what we truly owe after accounting for debit notes)
+    const totalOutstanding = Math.max(0, totalCreditsOutstanding - totalDebitsOutstanding);
     
     // Calculate overdue: dueDate < today AND status is not 'Paid'
     const totalOverdue = invs.filter(inv => {
@@ -73,22 +91,22 @@ export default function Dashboard() {
       return dueDate < today;
     }).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
     
-    // Calculate upcoming 7 days: dueDate >= today AND dueDate <= today + 7 days AND status is not 'Paid'
+    // Calculate upcoming 7 days: dueDate > today AND dueDate <= today + 7 days AND status is not 'Paid'
     const upcoming7Days = invs.filter(inv => {
       if (inv.status === 'Paid') return false;
       const dueDate = new Date(inv.dueDate);
       dueDate.setHours(0, 0, 0, 0);
       const diff = differenceInDays(dueDate, today);
-      return diff >= 0 && diff <= 7;
+      return diff > 0 && diff <= 7;
     }).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
     
-    // Calculate upcoming 30 days: dueDate >= today AND dueDate <= today + 30 days AND status is not 'Paid'
+    // Calculate upcoming 30 days: dueDate > today AND dueDate <= today + 30 days AND status is not 'Paid'
     const upcoming30Days = invs.filter(inv => {
       if (inv.status === 'Paid') return false;
       const dueDate = new Date(inv.dueDate);
       dueDate.setHours(0, 0, 0, 0);
       const diff = differenceInDays(dueDate, today);
-      return diff >= 0 && diff <= 30;
+      return diff > 0 && diff <= 30;
     }).reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0);
 
     return {
@@ -98,7 +116,7 @@ export default function Dashboard() {
       upcoming30Days,
       upcoming15Days: 0
     };
-  }, [invoices]);
+  }, [invoices, debitNotes]);
 
   const agingData = useMemo(() => {
     const today = new Date();
