@@ -32,6 +32,8 @@ interface Transaction {
   supplierName: string;
   referenceNumber: string;
   amount: number;
+  debitAmount: number;
+  creditAmount: number;
   reason?: string;
   dueDate?: string;
   status?: string;
@@ -81,13 +83,16 @@ export default function PurchaseLedgerPage() {
     const all: Transaction[] = [];
 
     invoices?.forEach(inv => {
+      const amount = inv.amount || 0;
       all.push({
         id: inv.id,
         type: 'invoice',
         date: inv.invoiceDate || inv.date || '',
         supplierName: suppliers?.find(s => s.id === inv.supplierId)?.name || 'Unknown',
         referenceNumber: inv.invoiceNumber || '',
-        amount: inv.amount || 0,
+        amount: amount,
+        debitAmount: amount,
+        creditAmount: 0,
         dueDate: inv.dueDate || '',
         status: inv.status || 'Pending',
         branchId: inv.branchId || '',
@@ -96,13 +101,16 @@ export default function PurchaseLedgerPage() {
     });
 
     debitNotes?.forEach(dn => {
+      const amount = dn.amount || 0;
       all.push({
         id: dn.id,
         type: 'debitNote',
         date: dn.date || '',
         supplierName: suppliers?.find(s => s.id === dn.supplierId)?.name || 'Unknown',
         referenceNumber: dn.referenceNumber || '',
-        amount: dn.amount || 0,
+        amount: amount,
+        debitAmount: amount,
+        creditAmount: 0,
         reason: dn.reason || '',
         branchId: dn.branchId || '',
         supplierId: dn.supplierId || '',
@@ -110,13 +118,16 @@ export default function PurchaseLedgerPage() {
     });
 
     creditNotes?.forEach(cn => {
+      const amount = cn.amount || 0;
       all.push({
         id: cn.id,
         type: 'creditNote',
         date: cn.date || '',
         supplierName: suppliers?.find(s => s.id === cn.supplierId)?.name || 'Unknown',
         referenceNumber: cn.referenceNumber || '',
-        amount: cn.amount || 0,
+        amount: amount,
+        debitAmount: 0,
+        creditAmount: amount,
         reason: cn.reason || '',
         branchId: cn.branchId || '',
         supplierId: cn.supplierId || '',
@@ -161,12 +172,16 @@ export default function PurchaseLedgerPage() {
     const creditTotal = sorted
       .filter(t => t.type === 'creditNote')
       .reduce((sum, t) => sum + t.amount, 0);
+    const totalDebits = sorted.reduce((sum, t) => sum + t.debitAmount, 0);
+    const totalCredits = sorted.reduce((sum, t) => sum + t.creditAmount, 0);
 
     return {
       totalTransactions: sorted.length,
       invoiceTotal,
       debitTotal,
       creditTotal,
+      totalDebits,
+      totalCredits,
       netPayable: invoiceTotal + debitTotal - creditTotal,
     };
   }, [sorted]);
@@ -242,20 +257,20 @@ export default function PurchaseLedgerPage() {
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
-              <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Invoices</div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Total Invoices</div>
               <div className="text-2xl font-black text-slate-900">{summary.invoiceTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
-              <div className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-2">Debit Notes</div>
-              <div className="text-2xl font-black text-slate-900">{summary.debitTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-700 mb-2">Total Debits</div>
+              <div className="text-2xl font-black text-slate-900">{summary.totalDebits.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
-              <div className="text-[10px] font-black uppercase tracking-widest text-green-600 mb-2">Credit Notes</div>
-              <div className="text-2xl font-black text-slate-900">({summary.creditTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })})</div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Total Credits</div>
+              <div className="text-2xl font-black text-slate-900">{summary.totalCredits.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10">
@@ -358,7 +373,8 @@ export default function PurchaseLedgerPage() {
                       <TableHead className="h-12 px-6 text-xs font-bold">Supplier</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold">Type</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold">Reference</TableHead>
-                      <TableHead className="h-12 px-6 text-xs font-bold text-right">Amount</TableHead>
+                      <TableHead className="h-12 px-6 text-xs font-bold text-right">Debit</TableHead>
+                      <TableHead className="h-12 px-6 text-xs font-bold text-right">Credit</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold">Status</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold text-center">Action</TableHead>
                     </TableRow>
@@ -377,7 +393,8 @@ export default function PurchaseLedgerPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="px-6 py-4 text-sm font-mono text-slate-600">{t.referenceNumber}</TableCell>
-                        <TableCell className="px-6 py-4 text-sm font-bold text-right">{t.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="px-6 py-4 text-sm font-bold text-right text-slate-700">{t.debitAmount > 0 ? t.debitAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</TableCell>
+                        <TableCell className="px-6 py-4 text-sm font-bold text-right text-red-600">{t.creditAmount > 0 ? t.creditAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</TableCell>
                         <TableCell className="px-6 py-4 text-sm">
                           {t.status && (
                             <Badge variant="outline" className="text-xs font-bold">{t.status}</Badge>
@@ -434,8 +451,12 @@ export default function PurchaseLedgerPage() {
                     <p className="text-sm font-bold text-slate-900">{selectedTransaction.supplierName}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Amount</p>
-                    <p className="text-lg font-black text-primary">{selectedTransaction.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Debit Amount</p>
+                    <p className="text-lg font-black text-slate-700">{selectedTransaction.debitAmount > 0 ? selectedTransaction.debitAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Credit Amount</p>
+                    <p className="text-lg font-black text-red-600">{selectedTransaction.creditAmount > 0 ? selectedTransaction.creditAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Type</p>

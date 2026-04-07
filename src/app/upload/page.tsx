@@ -827,7 +827,7 @@ export default function UploadPage() {
 
     // Write upload history
     try {
-      await addDoc(collection(firestore, 'uploadHistory'), {
+      const historyRef = await addDoc(collection(firestore, 'uploadHistory'), {
         type: isMixedMode ? 'mixed' : importType,
         branchId: selectedBranchId,
         uploadedBy: user.uid,
@@ -840,6 +840,24 @@ export default function UploadPage() {
         batchMemo: batchMemo.trim() || 'Standard Sync',
         accountingPeriod: accountingPeriod.trim() || format(new Date(), 'MMM yyyy'),
       });
+
+      // Save detailed records as subcollection for easy lookup
+      const detailsBatch = writeBatch(firestore);
+      previewData.forEach((row, idx) => {
+        const detailRef = doc(collection(firestore, 'uploadHistory', historyRef.id, 'details'));
+        detailsBatch.set(detailRef, {
+          refNumber: row.refNumber,
+          supplierName: row.supplierName,
+          amount: row.amount,
+          creditAmount: row.creditAmount,
+          date: row.date,
+          voucherType: row.voucherType,
+          isSkipped: row.isSkipped,
+          errorCode: row.errorCode,
+          errorDetail: row.errorDetail,
+        });
+      });
+      await detailsBatch.commit();
     } catch (e) {
       console.error('Failed to log upload history', e);
     }

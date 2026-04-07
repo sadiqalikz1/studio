@@ -5,17 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, orderBy, query } from 'firebase/firestore';
+import { collection, orderBy, query, where } from 'firebase/firestore';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
-import { ArrowLeft, History, FileSpreadsheet, CheckCircle2, AlertTriangle, UserPlus, Filter } from 'lucide-react';
+import { ArrowLeft, History, FileSpreadsheet, CheckCircle2, AlertTriangle, UserPlus, Filter, X } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 
 export default function UploadHistoryPage() {
   const firestore = useFirestore();
   const [filterType, setFilterType] = useState<string>('all');
+  const [selectedHistory, setSelectedHistory] = useState<any>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   const historyQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -28,6 +31,13 @@ export default function UploadHistoryPage() {
     return collection(firestore, 'branches');
   }, [firestore]);
   const { data: branches } = useCollection(branchesQuery);
+
+  // Query details for selected history
+  const detailsQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedHistory?.id) return null;
+    return query(collection(firestore, 'uploadHistory', selectedHistory.id, 'details'));
+  }, [firestore, selectedHistory]);
+  const { data: importDetails } = useCollection(detailsQuery);
 
   const filtered = useMemo(() => {
     if (!history) return [];
@@ -145,7 +155,14 @@ export default function UploadHistoryPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((h) => (
-                    <TableRow key={h.id} className="hover:bg-slate-50/50 transition-colors border-b-slate-50">
+                    <TableRow 
+                      key={h.id} 
+                      className="hover:bg-blue-50/50 transition-colors border-b-slate-50 cursor-pointer"
+                      onClick={() => {
+                        setSelectedHistory(h);
+                        setShowDetails(true);
+                      }}
+                    >
                       <TableCell className="font-mono text-[11px] text-slate-500 font-bold pl-8 py-5">
                         {formatDate(h.uploadedAt)}
                       </TableCell>
@@ -224,6 +241,139 @@ export default function UploadHistoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Details Drawer */}
+      <Sheet open={showDetails} onOpenChange={setShowDetails}>
+        <SheetContent className="w-full sm:w-[600px] flex flex-col p-0">
+          <SheetHeader className="sticky top-0 z-10 px-8 py-6 border-b bg-white">
+            <div className="flex items-center justify-between">
+              <SheetTitle className="text-lg">Import Session Details</SheetTitle>
+              <Button variant="ghost" size="icon" onClick={() => setShowDetails(false)} className="h-8 w-8">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+            {selectedHistory && (
+              <>
+                {/* Summary Info */}
+                <div className="space-y-3 pb-6 border-b">
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Upload Date</span>
+                    <span className="text-sm font-bold text-slate-900">{formatDate(selectedHistory.uploadedAt)}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">File Name</span>
+                    <span className="text-sm font-bold text-slate-900 text-right">{selectedHistory.fileName || '—'}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Type</span>
+                    <Badge className={`text-[9px] font-black uppercase ${
+                      selectedHistory.type === 'invoices' || selectedHistory.type === 'mixed'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}>
+                      {selectedHistory.type === 'invoices' ? 'Purchases' : selectedHistory.type === 'payments' ? 'Payments' : 'Mixed'}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Branch</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {branches?.find(b => b.id === selectedHistory.branchId)?.name || selectedHistory.branchId || '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Batch Memo</span>
+                    <span className="text-sm font-bold text-slate-900 text-right">{selectedHistory.batchMemo || '—'}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Accounting Period</span>
+                    <span className="text-sm font-bold text-slate-900">{selectedHistory.accountingPeriod || '—'}</span>
+                  </div>
+                </div>
+
+                {/* Statistics */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-slate-50 p-3 rounded-lg text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Total Rows</p>
+                    <p className="text-2xl font-black text-slate-900 mt-1">{selectedHistory.totalRows ?? 0}</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg text-center">
+                    <p className="text-[10px] font-bold text-green-600 uppercase">Imported</p>
+                    <p className="text-2xl font-black text-green-600 mt-1">{selectedHistory.importedCount ?? 0}</p>
+                  </div>
+                  <div className="bg-amber-50 p-3 rounded-lg text-center">
+                    <p className="text-[10px] font-bold text-amber-600 uppercase">Skipped</p>
+                    <p className="text-2xl font-black text-amber-600 mt-1">{selectedHistory.skippedCount ?? 0}</p>
+                  </div>
+                </div>
+
+                {/* New Suppliers Created */}
+                {selectedHistory.newSuppliersCreated > 0 && (
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <UserPlus className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-bold text-primary">New Suppliers Created</p>
+                        <p className="text-2xl font-black text-primary mt-1">{selectedHistory.newSuppliersCreated}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Imported Records Preview */}
+                {importDetails && importDetails.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Imported Records Preview</h3>
+                    <div className="overflow-x-auto border rounded-lg max-h-[300px] overflow-y-auto">
+                      <Table className="w-full text-xs">
+                        <TableHeader className="bg-slate-50 sticky top-0">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="text-[9px] font-black uppercase py-2 px-3">Vch No.</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase py-2 px-3">Party</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase py-2 px-3 text-right">Amount</TableHead>
+                            <TableHead className="text-[9px] font-black uppercase py-2 px-3 text-center">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {importDetails.slice(0, 50).map((detail: any, idx: number) => (
+                            <TableRow key={idx} className="hover:bg-slate-50/50 border-b text-xs">
+                              <TableCell className="font-mono font-bold py-2 px-3">{detail.refNumber || '—'}</TableCell>
+                              <TableCell className="font-medium py-2 px-3 max-w-[120px] truncate">{detail.supplierName || '—'}</TableCell>
+                              <TableCell className="font-mono font-bold py-2 px-3 text-right">{detail.amount?.toFixed(2) || '—'}</TableCell>
+                              <TableCell className="text-center py-2 px-3">
+                                {detail.isSkipped ? (
+                                  <Badge className="bg-red-100 text-red-700 text-[8px] font-bold">SKIP</Badge>
+                                ) : (
+                                  <Badge className="bg-green-100 text-green-700 text-[8px] font-bold">OK</Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    {importDetails.length > 50 && (
+                      <p className="text-xs text-slate-400 text-center py-2">
+                        ... and {importDetails.length - 50} more records
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {(!importDetails || importDetails.length === 0) && (
+                  <div className="text-center py-8">
+                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-500">Detailed records coming soon</p>
+                    <p className="text-xs text-slate-400 mt-1">Visit Purchase Ledger to see imported transactions</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </SidebarInset>
   );
 }
