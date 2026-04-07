@@ -574,14 +574,10 @@ export default function UploadPage() {
         isValid = false;
         errorCode = 'MISSING_DATA';
         errorDetail = 'Reference Number and Party Name are mandatory.';
-      } else if (detectedType === 'invoices' && (isNaN(creditAmount) || creditAmount === 0)) {
+      } else if ((isNaN(amount) || amount === 0) && (isNaN(creditAmount) || creditAmount === 0)) {
         isValid = false;
         errorCode = 'ZERO_AMOUNT';
-        errorDetail = 'Purchase vouchers must have a Credit Amount.';
-      } else if (detectedType === 'debitNote' && (isNaN(amount) || amount === 0)) {
-        isValid = false;
-        errorCode = 'ZERO_AMOUNT';
-        errorDetail = 'Debit Note vouchers must have a Debit Amount.';
+        errorDetail = 'Transaction must have either a Debit Amount or Credit Amount greater than zero.';
       } else if (amount < 0) {
         isValid = false;
         errorCode = 'NEGATIVE_AMOUNT';
@@ -636,8 +632,42 @@ export default function UploadPage() {
     });
 
     if (parsed.filter(r => r.isValid).length === 0) {
+      // Generate detailed error report
+      const errorSummary: Record<string, number> = {};
+      const sampleErrors: any[] = [];
+      
+      parsed.forEach((row, idx) => {
+        if (!row.isValid && sampleErrors.length < 5) {
+          sampleErrors.push({
+            row: idx + 1,
+            data: {
+              refNumber: row.refNumber,
+              supplier: row.supplierName,
+              amount: row.amount,
+              creditAmount: row.creditAmount,
+              date: row.date,
+            },
+            error: row.errorCode,
+            detail: row.errorDetail,
+          });
+        }
+        if (row.errorCode) {
+          errorSummary[row.errorCode] = (errorSummary[row.errorCode] || 0) + 1;
+        }
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('⚠️ VALIDATION REPORT - All rows failed');
+        console.warn('Errors by type:', errorSummary);
+        console.warn('Sample errors:', sampleErrors);
+      }
+
+      const errorDetails = Object.entries(errorSummary)
+        .map(([code, count]) => `${count}x ${code}`)
+        .join(', ');
+
       setError(
-        `Analysis Failed: ${fileData.length - 1} rows processed, but all rows have validation errors. Please check your mapping or file content.`
+        `Analysis Failed: All ${fileData.length - 1} rows have validation errors.\n\n📋 Error Breakdown: ${errorDetails}\n\n🔍 First Error:\n${sampleErrors[0]?.data?.refNumber || '—'} | ${sampleErrors[0]?.detail || 'Unknown error'}`
       );
       return;
     }
@@ -659,6 +689,7 @@ export default function UploadPage() {
       // All suppliers known — go straight to preview
       setPreviewData(parsed);
       setCurrentStep('verify');
+      setIsMappingMode(false);
     }
   };
 
@@ -674,6 +705,7 @@ export default function UploadPage() {
     }));
     setPreviewData(updated);
     setCurrentStep('verify');
+    setIsMappingMode(false);
     setShowConfirmDialog(false);
     setPendingParsed([]);
     setNewSuppliersToConfirm([]);
@@ -846,15 +878,15 @@ export default function UploadPage() {
       previewData.forEach((row, idx) => {
         const detailRef = doc(collection(firestore, 'uploadHistory', historyRef.id, 'details'));
         detailsBatch.set(detailRef, {
-          refNumber: row.refNumber,
-          supplierName: row.supplierName,
-          amount: row.amount,
-          creditAmount: row.creditAmount,
-          date: row.date,
-          voucherType: row.voucherType,
-          isSkipped: row.isSkipped,
-          errorCode: row.errorCode,
-          errorDetail: row.errorDetail,
+          refNumber: row.refNumber || '',
+          supplierName: row.supplierName || '',
+          amount: row.amount || 0,
+          creditAmount: row.creditAmount || 0,
+          date: row.date || '',
+          voucherType: row.voucherType || 'invoices',
+          isSkipped: row.isSkipped || false,
+          ...(row.errorCode && { errorCode: row.errorCode }),
+          ...(row.errorDetail && { errorDetail: row.errorDetail }),
         });
       });
       await detailsBatch.commit();
@@ -1383,7 +1415,7 @@ export default function UploadPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
                     <Table className="w-full">
                       <TableHeader className="bg-slate-100 sticky top-0 z-10">
                         <TableRow className="hover:bg-transparent">
