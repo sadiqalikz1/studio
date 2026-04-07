@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase';
 import { PageWrapper } from '@/components/layout/page-wrapper';
+import { QueryProvider } from '@/providers/query-provider';
 
 export const metadata: Metadata = {
   title: 'DuesFlow | Enterprise Supplier Dues Management',
@@ -22,9 +23,11 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-[#F3F6F9]">
         <FirebaseClientProvider>
-          <PageWrapper>
-            {children}
-          </PageWrapper>
+          <QueryProvider>
+            <PageWrapper>
+              {children}
+            </PageWrapper>
+          </QueryProvider>
         </FirebaseClientProvider>
       </body>
     </html>
