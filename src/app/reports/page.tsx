@@ -13,6 +13,7 @@ import { Search, Download, Filter, ChevronRight, Loader2 } from 'lucide-react';
 import { useCurrency } from '@/hooks/use-currency';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
 
 interface LedgerSummary {
   supplierId: string;
@@ -185,6 +186,55 @@ export default function ReportsPage() {
     return ledgers.reduce((sum, ledger) => sum + ledger.outstandingBalance, 0);
   }, [ledgers]);
 
+  const handleExportExcel = () => {
+    // Prepare data for export
+    const exportData = ledgers.map((ledger) => ({
+      'Supplier Name': ledger.supplierName,
+      'Total Invoiced': ledger.totalInvoiced,
+      'Total Paid': ledger.totalPaid,
+      'Outstanding Balance': ledger.outstandingBalance,
+      'Days Overdue': ledger.daysOverdue > 0 ? ledger.daysOverdue : 'Current',
+      'Status': ledger.status,
+    }));
+
+    // Create workbook and add data
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+    // Format columns
+    const columnWidths = [
+      { wch: 25 }, // Supplier Name
+      { wch: 15 }, // Total Invoiced
+      { wch: 12 }, // Total Paid
+      { wch: 18 }, // Outstanding Balance
+      { wch: 12 }, // Days Overdue
+      { wch: 10 }, // Status
+    ];
+    worksheet['!cols'] = columnWidths;
+
+    // Add summary row at the top
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['Outstanding Ledgers Report'],
+      ['Generated on: ' + new Date().toLocaleDateString()],
+      [],
+      ['Total Outstanding: ' + totalOutstanding],
+      ['Total Suppliers: ' + ledgers.length],
+      ['Critical Count: ' + ledgers.filter((l) => l.status === 'Critical').length],
+      [],
+    ]);
+
+    XLSX.utils.sheet_add_json(summarySheet, exportData, { origin: 'A8' });
+    summarySheet['!cols'] = columnWidths;
+
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Outstanding Ledgers');
+
+    // Generate file name with current date
+    const fileName = `Outstanding-Ledgers-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    // Write file
+    XLSX.writeFile(workbook, fileName);
+  };
+
   return (
     <SidebarInset className="flex-1 bg-background">
       <header className="sticky top-0 z-10 flex h-20 shrink-0 items-center gap-4 border-b bg-background/80 backdrop-blur-md px-4 md:px-8">
@@ -195,7 +245,12 @@ export default function ReportsPage() {
           <p className="text-xs text-slate-500 mt-0.5">Suppliers with outstanding balances due</p>
         </div>
         <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" className="rounded-full text-xs font-bold">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="rounded-full text-xs font-bold"
+            onClick={handleExportExcel}
+          >
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
