@@ -293,32 +293,65 @@ export default function UploadPage() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-        if (data.length > 0) {
-          const headers = data[0].map((h: any) => h?.toString() || '');
-          setFileHeaders(headers);
-          setFileData(data);
-          detectFileMetadata(data);
-          
-          // Auto-detect mixed mode: Check for "Vch Type" column
-          const vchTypeIdx = headers.findIndex(h => 
-            h.toLowerCase().includes('vch type') || 
-            h.toLowerCase().includes('vchtype') ||
-            h.toLowerCase() === 'type'
-          );
-          
-          if (vchTypeIdx !== -1) {
-            setIsMixedMode(true);
-            setVchTypeColumn(headers[vchTypeIdx]);
-            setImportType('invoices');  // Default for display, won't be used in mixed mode
-          } else {
-            setIsMixedMode(false);
-            setVchTypeColumn('');
-          }
-          
-          setCurrentStep('upload');
+        
+        if (!data || data.length === 0) {
+          setError('File is empty. Please upload a file with data.');
+          return;
         }
-      } catch {
-        setError('Could not read headers from file.');
+
+        // Find first row with data (skip empty rows at the top)
+        let headerRowIdx = 0;
+        for (let i = 0; i < Math.min(data.length, 5); i++) {
+          if (Array.isArray(data[i]) && data[i].some(cell => cell !== null && cell !== undefined && cell !== '')) {
+            headerRowIdx = i;
+            break;
+          }
+        }
+
+        const headerRow = data[headerRowIdx] || [];
+        const headers = headerRow
+          .map((h: any) => {
+            const str = h?.toString().trim() || '';
+            return str;
+          })
+          .filter((h: string) => h !== ''); // Remove empty header cells
+
+        if (headers.length === 0) {
+          setError('No valid column headers found. Please check your file format.');
+          return;
+        }
+
+        // Rebuild data array with actual headers if they weren't in row 0
+        let processedData = data;
+        if (headerRowIdx > 0) {
+          // Insert header row at index 0
+          processedData = [headerRow, ...data.slice(headerRowIdx + 1)];
+        }
+
+        setFileHeaders(headers);
+        setFileData(processedData);
+        detectFileMetadata(processedData);
+        
+        // Auto-detect mixed mode: Check for "Vch Type" column
+        const vchTypeIdx = headers.findIndex(h => 
+          h.toLowerCase().includes('vch type') || 
+          h.toLowerCase().includes('vchtype') ||
+          h.toLowerCase() === 'type'
+        );
+        
+        if (vchTypeIdx !== -1) {
+          setIsMixedMode(true);
+          setVchTypeColumn(headers[vchTypeIdx]);
+          setImportType('invoices');  // Default for display, won't be used in mixed mode
+        } else {
+          setIsMixedMode(false);
+          setVchTypeColumn('');
+        }
+        
+        setCurrentStep('upload');
+      } catch (err) {
+        console.error('File read error:', err);
+        setError('Could not read file. Ensure it is a valid Excel (.xlsx, .xls) or CSV file.');
       }
     };
     reader.readAsBinaryString(selectedFile);
