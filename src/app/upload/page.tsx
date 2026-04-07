@@ -30,6 +30,7 @@ import {
   ArrowLeft,
   Filter,
   Check,
+  RotateCcw,
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -66,6 +67,7 @@ interface ParsedRow {
   date: string;
   supplierName: string;
   amount: number;
+  creditAmount?: number;
   creditDays?: number;
   dueDate?: string;
   reason?: string;
@@ -121,7 +123,7 @@ const SYSTEM_COLUMNS = {
     { key: 'vchType', label: 'Vch Type', required: false, icon: <FileSpreadsheet className="w-3 h-3" /> },
     { key: 'refNumber', label: 'Vch No. / Reference', required: true, icon: <ReceiptText className="w-3 h-3" /> },
     { key: 'amount', label: 'Debit / Transaction Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
-    { key: 'creditAmount', label: 'Credit Amount (Optional)', required: false, icon: <CreditCard className="w-3 h-3" /> },
+    { key: 'creditAmount', label: 'Credit Amount', required: true, icon: <CreditCard className="w-3 h-3" /> },
     { key: 'creditDays', label: 'Credit Days', required: false, icon: <RefreshCw className="w-3 h-3" /> },
     { key: 'reason', label: 'Reason / Description', required: false, icon: <Info className="w-3 h-3" /> },
   ],
@@ -452,11 +454,11 @@ export default function UploadPage() {
   // ── Process Mapping → detect new suppliers → show confirm dialog ──────────
 
   const processMapping = () => {
-    // In mixed mode, we only need Date, Supplier Name, and Amount columns
+    // In mixed mode, we need Date, Supplier Name, Amount, Credit Amount, and Ref Number
     let requiredColumns: string[] = [];
     
     if (isMixedMode) {
-      requiredColumns = ['supplierName', 'date', 'amount'];
+      requiredColumns = ['refNumber', 'supplierName', 'date', 'amount', 'creditAmount'];
     } else {
       const currentCols = SYSTEM_COLUMNS[importType];
       requiredColumns = currentCols.filter(c => c.required && !(c.key === 'date' && fallbackDate)).map(c => c.key);
@@ -466,9 +468,10 @@ export default function UploadPage() {
     const missing = requiredColumns.filter(key => !mappingState[key]);
     if (missing.length > 0) {
       const labels = missing.map(k => {
-        if (k === 'supplierName') return 'Supplier / Party';
+        if (k === 'refNumber') return 'Vch No.';
+        if (k === 'supplierName') return 'Particulars';
         if (k === 'date') return 'Date';
-        if (k === 'amount') return 'Amount';
+        if (k === 'amount') return 'Debit Amount';
         return k;
       });
       setError(`Mandatory mapping required: ${labels.join(', ')}`);
@@ -516,9 +519,10 @@ export default function UploadPage() {
     
     if (unindexed.length > 0) {
       const labels = unindexed.map(u => {
-        if (u === 'supplierName') return 'Party';
+        if (u === 'refNumber') return 'Vch No.';
+        if (u === 'supplierName') return 'Particulars';
         if (u === 'date') return 'Date';
-        if (u === 'amount') return 'Amount';
+        if (u === 'amount') return 'Debit Amount';
         return u;
       });
       setError(`Could not find indices for: ${labels.join(', ')}. Please re-map.`);
@@ -531,8 +535,8 @@ export default function UploadPage() {
     fileData.slice(1).forEach((row: any[], idx: number) => {
       if (!row || row.length === 0) return;
       
-      // Get basic fields
-      const refNoRaw = row[headerIndices['refNumber']] || row[0];  // Fallback to first column if no mapping
+      // Get basic fields (all should be mapped in mixed mode)
+      const refNoRaw = row[headerIndices['refNumber']];
       const dateVal = row[headerIndices['date']];
       const supplierNameRaw = row[headerIndices['supplierName']];
       const amountRaw = row[headerIndices['amount']];
@@ -557,6 +561,8 @@ export default function UploadPage() {
       const supplierName = supplierNameRaw?.toString().trim() || '';
       const amount = cleanNumeric(amountRaw);
       const reason = reasonRaw?.toString().trim() || '';
+      const creditAmountRaw = row[headerIndices['creditAmount']];
+      const creditAmount = cleanNumeric(creditAmountRaw);
       const cdIdx = headerIndices['creditDays'];
       const creditDays = cdIdx !== undefined ? parseInt(row[cdIdx]) || 30 : 30;
 
@@ -568,14 +574,22 @@ export default function UploadPage() {
         isValid = false;
         errorCode = 'MISSING_DATA';
         errorDetail = 'Reference Number and Party Name are mandatory.';
-      } else if (isNaN(amount) || amount === 0) {
+      } else if (detectedType === 'invoices' && (isNaN(creditAmount) || creditAmount === 0)) {
         isValid = false;
         errorCode = 'ZERO_AMOUNT';
-        errorDetail = 'Transaction amount cannot be zero.';
+        errorDetail = 'Purchase vouchers must have a Credit Amount.';
+      } else if (detectedType === 'debitNote' && (isNaN(amount) || amount === 0)) {
+        isValid = false;
+        errorCode = 'ZERO_AMOUNT';
+        errorDetail = 'Debit Note vouchers must have a Debit Amount.';
       } else if (amount < 0) {
         isValid = false;
         errorCode = 'NEGATIVE_AMOUNT';
         errorDetail = 'Negative amounts should be uploaded as separate adjustments.';
+      } else if (creditAmount < 0) {
+        isValid = false;
+        errorCode = 'NEGATIVE_AMOUNT';
+        errorDetail = 'Negative credit amounts should be uploaded as separate adjustments.';
       } else if (seenRefs.has(refNumber)) {
         isValid = false;
         errorCode = 'DUPLICATE_REF';
@@ -608,6 +622,7 @@ export default function UploadPage() {
         date: isValidDate(dateObj) ? format(dateObj, 'yyyy-MM-dd') : 'Invalid',
         supplierName,
         amount,
+        creditAmount: !isNaN(creditAmount) ? creditAmount : undefined,
         creditDays: detectedType === 'invoices' ? creditDays : undefined,
         dueDate: dueDate ? format(dueDate, 'yyyy-MM-dd') : undefined,
         reason: (detectedType === 'debitNote') ? reason : undefined,
@@ -1337,6 +1352,9 @@ export default function UploadPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => { setPreviewData([]); setCurrentStep('select'); }} className="rounded-full text-slate-600 hover:text-blue-600 bg-white border-slate-200">
+                      <RotateCcw className="w-3.5 h-3.5 mr-2" /> Resync
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setPreviewData([])} className="rounded-full text-slate-600 hover:text-red-600 bg-white border-slate-200">
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> Discard
                     </Button>
@@ -1347,19 +1365,19 @@ export default function UploadPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="max-h-[600px] overflow-auto">
-                    <Table>
-                      <TableHeader className="bg-slate-50/80 sticky top-0 backdrop-blur-md z-10">
-                        <TableRow className="hover:bg-transparent border-b-slate-100">
-                          <TableHead className="w-[90px] text-[10px] font-black uppercase tracking-widest py-5 pl-8">Date</TableHead>
-                          <TableHead className="w-[140px] text-[10px] font-black uppercase tracking-widest py-5">Particulars</TableHead>
-                          <TableHead className="text-[10px] font-black uppercase tracking-widest py-5">Vch Type</TableHead>
-                          <TableHead className="w-[110px] text-[10px] font-black uppercase tracking-widest py-5">Vch No.</TableHead>
-                          <TableHead className="text-right text-[10px] font-black uppercase tracking-widest py-5">Debit Amt</TableHead>
+                  <div className="overflow-x-auto">
+                    <Table className="w-full">
+                      <TableHeader className="bg-slate-100 sticky top-0 z-10">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="min-w-[80px] text-[9px] font-bold uppercase tracking-wide py-2 px-3">Date</TableHead>
+                          <TableHead className="min-w-[150px] text-[9px] font-bold uppercase tracking-wide py-2 px-3">Particulars</TableHead>
+                          <TableHead className="min-w-[60px] text-[9px] font-bold uppercase tracking-wide py-2 px-3 text-center">Type</TableHead>
+                          <TableHead className="min-w-[150px] text-[9px] font-bold uppercase tracking-wide py-2 px-3">Vch No.</TableHead>
+                          <TableHead className="min-w-[100px] text-[9px] font-bold uppercase tracking-wide py-2 px-3 text-right">Debit</TableHead>
                           {isMixedMode && (
-                            <TableHead className="text-right text-[10px] font-black uppercase tracking-widest py-5">Credit Amt</TableHead>
+                            <TableHead className="min-w-[100px] text-[9px] font-bold uppercase tracking-wide py-2 px-3 text-right">Credit</TableHead>
                           )}
-                          <TableHead className="text-center text-[10px] font-black uppercase tracking-widest py-5 px-4 pr-8">Status</TableHead>
+                          <TableHead className="min-w-[70px] text-[9px] font-bold uppercase tracking-wide py-2 px-3 text-center">Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1368,48 +1386,48 @@ export default function UploadPage() {
                             key={row.id}
                             className={`${
                               row.isSkipped
-                                ? 'bg-red-50/40 opacity-50'
+                                ? 'bg-red-50'
                                 : row.isUnregistered
-                                ? 'bg-amber-50/30'
-                                : ''
-                            } hover:bg-slate-50/50 transition-colors border-b-slate-50`}
+                                ? 'bg-blue-50'
+                                : 'hover:bg-slate-50'
+                            } border-b border-slate-100 transition-colors`}
                           >
-                            <TableCell className="text-[11px] text-slate-600 font-bold pl-8 py-5 whitespace-nowrap">
+                            <TableCell className="text-[10px] font-semibold text-slate-700 py-1.5 px-3 whitespace-nowrap">
                               {row.date}
                             </TableCell>
-                            <TableCell className="text-[12px] font-bold text-slate-800 py-5">
+                            <TableCell className="text-[10px] font-bold text-slate-900 py-1.5 px-3 truncate">
                               {row.supplierName}
                             </TableCell>
-                            <TableCell className="text-[10px] font-bold py-5">
+                            <TableCell className="text-[8px] font-bold py-1.5 px-3 text-center">
                               {row.voucherType === 'invoices' ? (
-                                <Badge className="bg-blue-50 text-blue-700 border-blue-100 text-[9px] uppercase">Purchase</Badge>
+                                <Badge className="bg-blue-100 text-blue-700 border-0 text-[8px]">PUR</Badge>
                               ) : (
-                                <Badge className="bg-orange-50 text-orange-700 border-orange-100 text-[9px] uppercase">Debit Note</Badge>
+                                <Badge className="bg-orange-100 text-orange-700 border-0 text-[8px]">DN</Badge>
                               )}
                             </TableCell>
-                            <TableCell className="font-mono text-[11px] text-slate-500 font-bold py-5 tracking-tight">
+                            <TableCell className="font-mono text-[10px] font-semibold text-slate-700 py-1.5 px-3">
                               {row.refNumber}
                             </TableCell>
-                            <TableCell className="text-right font-mono font-black text-[12px] py-5">
-                              {row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            <TableCell className="text-right font-mono text-[10px] font-bold text-slate-900 py-1.5 px-3">
+                              {row.amount.toFixed(2)}
                             </TableCell>
                             {isMixedMode && (
-                              <TableCell className="text-right font-mono text-[12px] py-5 text-slate-400">
-                                —
+                              <TableCell className="text-right font-mono text-[10px] font-bold text-slate-700 py-1.5 px-3">
+                                {row.creditAmount !== undefined ? row.creditAmount.toFixed(2) : '—'}
                               </TableCell>
                             )}
-                            <TableCell className="text-center py-5 px-4 pr-8">
+                            <TableCell className="text-center py-1.5 px-3">
                               {row.isSkipped ? (
-                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-50 text-red-500 border-red-100">
-                                  Skipped
+                                <Badge className="text-[7px] font-bold px-1.5 py-0 bg-red-100 text-red-700 border-0">
+                                  SKIP
                                 </Badge>
                               ) : row.isUnregistered ? (
-                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border-blue-100">
-                                  New
+                                <Badge className="text-[7px] font-bold px-1.5 py-0 bg-blue-100 text-blue-700 border-0">
+                                  NEW
                                 </Badge>
                               ) : (
-                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-50 text-green-600 border-green-100">
-                                  Ready
+                                <Badge className="text-[7px] font-bold px-1.5 py-0 bg-green-100 text-green-700 border-0">
+                                  OK
                                 </Badge>
                               )}
                             </TableCell>
