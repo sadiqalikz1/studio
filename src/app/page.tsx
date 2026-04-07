@@ -36,13 +36,6 @@ export default function Dashboard() {
   const { user, isUserLoading } = useUser();
   const { formatCurrency } = useCurrency();
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isUserLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isUserLoading, router]);
-
   const branchesQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return collection(firestore, 'branches');
