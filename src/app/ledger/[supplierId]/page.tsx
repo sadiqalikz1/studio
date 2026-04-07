@@ -12,16 +12,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
-import {
-  Search, FileText, AlertTriangle, CheckCircle2, Calendar, DollarSign, Loader2, TrendingUp, Eye, ChevronDown,
+  Search, FileText, AlertTriangle, CheckCircle2, Loader2, TrendingUp, Eye, ChevronLeft,
 } from 'lucide-react';
-import { format, parse, isValid as isValidDate } from 'date-fns';
+import { format } from 'date-fns';
 import { useCollection, useMemoFirebase, useFirestore } from '@/firebase';
-import { collection, query, where, orderBy } from 'firebase/firestore';
-import { useUserRole } from '@/hooks/use-user-role';
+import { collection } from 'firebase/firestore';
+import { useCurrency } from '@/hooks/use-currency';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 
 type TransactionType = 'invoice' | 'debitNote' | 'creditNote';
 
@@ -41,17 +39,17 @@ interface Transaction {
   supplierId: string;
 }
 
-export default function PurchaseLedgerPage() {
+export default function LedgerDetailPage() {
+  const params = useParams();
+  const supplierId = params.supplierId as string;
   const firestore = useFirestore();
-  const { isAdmin, isLoading: isRoleLoading } = useUserRole();
+  const { formatCurrency } = useCurrency();
 
   // State
-  const [filterSupplier, setFilterSupplier] = useState('');
   const [filterType, setFilterType] = useState<TransactionType | 'all'>('all');
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'supplier' | 'amount'>('date');
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -80,17 +78,23 @@ export default function PurchaseLedgerPage() {
   }, [firestore]);
   const { data: suppliers } = useCollection(suppliersQuery);
 
-  // Normalize and combine all transactions
+  // Get supplier name
+  const supplierName = useMemo(() => {
+    return suppliers?.find(s => s.id === supplierId)?.name || 'Unknown Supplier';
+  }, [suppliers, supplierId]);
+
+  // Normalize and combine all transactions for this supplier
   const transactions: Transaction[] = useMemo(() => {
     const all: Transaction[] = [];
 
     invoices?.forEach(inv => {
+      if (inv.supplierId !== supplierId) return;
       const amount = inv.amount || 0;
       all.push({
         id: inv.id,
         type: 'invoice',
         date: inv.invoiceDate || inv.date || '',
-        supplierName: suppliers?.find(s => s.id === inv.supplierId)?.name || 'Unknown',
+        supplierName: supplierName,
         referenceNumber: inv.invoiceNumber || '',
         amount: amount,
         debitAmount: amount,
@@ -103,12 +107,13 @@ export default function PurchaseLedgerPage() {
     });
 
     debitNotes?.forEach(dn => {
+      if (dn.supplierId !== supplierId) return;
       const amount = dn.amount || 0;
       all.push({
         id: dn.id,
         type: 'debitNote',
         date: dn.date || '',
-        supplierName: suppliers?.find(s => s.id === dn.supplierId)?.name || 'Unknown',
+        supplierName: supplierName,
         referenceNumber: dn.referenceNumber || '',
         amount: amount,
         debitAmount: amount,
@@ -120,12 +125,13 @@ export default function PurchaseLedgerPage() {
     });
 
     creditNotes?.forEach(cn => {
+      if (cn.supplierId !== supplierId) return;
       const amount = cn.amount || 0;
       all.push({
         id: cn.id,
         type: 'creditNote',
         date: cn.date || '',
-        supplierName: suppliers?.find(s => s.id === cn.supplierId)?.name || 'Unknown',
+        supplierName: supplierName,
         referenceNumber: cn.referenceNumber || '',
         amount: amount,
         debitAmount: 0,
@@ -137,31 +143,28 @@ export default function PurchaseLedgerPage() {
     });
 
     return all;
-  }, [invoices, debitNotes, creditNotes, suppliers]);
+  }, [invoices, debitNotes, creditNotes, supplierId, supplierName]);
 
   // Apply filters
   const filtered = useMemo(() => {
     return transactions.filter(t => {
       if (filterType !== 'all' && t.type !== filterType) return false;
-      if (filterSupplier && !t.supplierName.toLowerCase().includes(filterSupplier.toLowerCase())) return false;
       if (filterFromDate && t.date < filterFromDate) return false;
       if (filterToDate && t.date > filterToDate) return false;
       return true;
     });
-  }, [transactions, filterSupplier, filterType, filterFromDate, filterToDate]);
+  }, [transactions, filterType, filterFromDate, filterToDate]);
 
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterSupplier, filterType, filterFromDate, filterToDate]);
+  }, [filterType, filterFromDate, filterToDate]);
 
   // Apply sorting
   const sorted = useMemo(() => {
     const copy = [...filtered];
     if (sortBy === 'date') {
       copy.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    } else if (sortBy === 'supplier') {
-      copy.sort((a, b) => a.supplierName.localeCompare(b.supplierName));
     } else if (sortBy === 'amount') {
       copy.sort((a, b) => b.amount - a.amount);
     }
@@ -242,30 +245,20 @@ export default function PurchaseLedgerPage() {
     }
   };
 
-  if (isRoleLoading) {
-    return (
-      <div className="p-8 h-screen flex flex-col items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="mt-4 text-slate-500 font-medium">Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <SidebarInset className="flex-1 bg-background">
       <header className="sticky top-0 z-10 flex h-20 shrink-0 items-center gap-4 border-b bg-background/80 backdrop-blur-md px-4 md:px-8">
         <SidebarTrigger className="-ml-1" />
         <div className="h-4 w-[1px] bg-slate-200 hidden md:block" />
+        <Link href="/reports">
+          <Button variant="ghost" size="sm" className="h-8 px-3 rounded-lg hover:bg-slate-100">
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Back
+          </Button>
+        </Link>
         <div className="flex flex-col">
-          <h2 className="text-lg font-bold font-headline text-slate-900 tracking-tight">Purchase Ledger</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Unified view of all purchase transactions</p>
-        </div>
-        <div className="ml-auto flex gap-2">
-          <Link href="/upload">
-            <Button variant="outline" size="sm" className="rounded-full text-xs font-bold">
-              + Upload
-            </Button>
-          </Link>
+          <h2 className="text-lg font-bold font-headline text-slate-900 tracking-tight">{supplierName}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">All transactions for this supplier</p>
         </div>
       </header>
 
@@ -281,25 +274,25 @@ export default function PurchaseLedgerPage() {
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Total Invoices</div>
-              <div className="text-2xl font-black text-slate-900">{summary.invoiceTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+              <div className="text-2xl font-black text-slate-900">{formatCurrency(summary.invoiceTotal)}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-700 mb-2">Total Debits</div>
-              <div className="text-2xl font-black text-slate-900">{summary.totalDebits.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+              <div className="text-2xl font-black text-slate-900">{formatCurrency(summary.totalDebits)}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-white">
             <CardContent className="pt-6">
               <div className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Total Credits</div>
-              <div className="text-2xl font-black text-slate-900">{summary.totalCredits.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+              <div className="text-2xl font-black text-slate-900">{formatCurrency(summary.totalCredits)}</div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10">
             <CardContent className="pt-6">
               <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">Net Payable</div>
-              <div className="text-2xl font-black text-primary">{summary.netPayable.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+              <div className="text-2xl font-black text-primary">{formatCurrency(summary.netPayable)}</div>
             </CardContent>
           </Card>
         </div>
@@ -313,16 +306,7 @@ export default function PurchaseLedgerPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase text-slate-600">Supplier</Label>
-                <Input
-                  placeholder="Search supplier..."
-                  value={filterSupplier}
-                  onChange={(e) => setFilterSupplier(e.target.value)}
-                  className="h-10 rounded-xl border-slate-200"
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase text-slate-600">Type</Label>
                 <Select value={filterType} onValueChange={(v: any) => setFilterType(v)}>
@@ -363,7 +347,6 @@ export default function PurchaseLedgerPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="date">Date (Newest)</SelectItem>
-                    <SelectItem value="supplier">Supplier Name</SelectItem>
                     <SelectItem value="amount">Amount (Highest)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -394,14 +377,12 @@ export default function PurchaseLedgerPage() {
                     <TableHeader>
                       <TableRow className="border-b border-slate-100 bg-slate-50">
                         <TableHead className="h-12 px-6 text-xs font-bold">Date</TableHead>
-                        <TableHead className="h-12 px-6 text-xs font-bold">Supplier</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold">Type</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold">Reference</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold text-right">Debit</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold text-right">Credit</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold">Due Date</TableHead>
                         <TableHead className="h-12 px-6 text-xs font-bold">Status</TableHead>
-                        <TableHead className="h-12 px-6 text-xs font-bold text-center">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -410,7 +391,6 @@ export default function PurchaseLedgerPage() {
                           <TableCell className="px-6 py-4 text-sm font-medium">
                             {format(new Date(t.date), 'MMM d, yyyy')}
                           </TableCell>
-                          <TableCell className="px-6 py-4 text-sm font-medium">{t.supplierName}</TableCell>
                           <TableCell className="px-6 py-4">
                             <Badge variant="outline" className={`${GetTypeBadgeVariant(t.type)} border text-xs font-bold flex items-center gap-1 w-fit`}>
                               {GetTypeIcon(t.type)}
@@ -418,8 +398,8 @@ export default function PurchaseLedgerPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="px-6 py-4 text-sm font-mono text-slate-600">{t.referenceNumber}</TableCell>
-                          <TableCell className="px-6 py-4 text-sm font-bold text-right text-slate-700">{t.debitAmount > 0 ? t.debitAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</TableCell>
-                          <TableCell className="px-6 py-4 text-sm font-bold text-right text-red-600">{t.creditAmount > 0 ? t.creditAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</TableCell>
+                          <TableCell className="px-6 py-4 text-sm font-bold text-right text-slate-700">{t.debitAmount > 0 ? formatCurrency(t.debitAmount) : '—'}</TableCell>
+                          <TableCell className="px-6 py-4 text-sm font-bold text-right text-red-600">{t.creditAmount > 0 ? formatCurrency(t.creditAmount) : '—'}</TableCell>
                           <TableCell className="px-6 py-4 text-sm font-medium">
                             {t.dueDate ? format(new Date(t.dueDate), 'MMM d, yyyy') : '—'}
                           </TableCell>
@@ -428,21 +408,12 @@ export default function PurchaseLedgerPage() {
                               <Badge variant="outline" className="text-xs font-bold">{t.status}</Badge>
                             )}
                           </TableCell>
-                          <TableCell className="px-6 py-4 text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedTransaction(t)}
-                              className="h-8 px-3 rounded-lg hover:bg-primary/10 text-primary"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+
                 {/* Pagination Controls */}
                 {paginationInfo.totalPages > 1 && (
                   <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">
@@ -481,78 +452,6 @@ export default function PurchaseLedgerPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Detail Modal */}
-      <Dialog open={!!selectedTransaction} onOpenChange={() => setSelectedTransaction(null)}>
-        <DialogContent className="rounded-[2rem] max-w-lg border-none shadow-2xl">
-          {selectedTransaction && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center gap-3 mb-2">
-                  {GetTypeIcon(selectedTransaction.type)}
-                  <DialogTitle className="text-xl font-black">
-                    {GetTypeLabel(selectedTransaction.type)} Details
-                  </DialogTitle>
-                </div>
-                <DialogDescription className="text-xs text-slate-600">
-                  Full transaction details and information
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Date</p>
-                    <p className="text-sm font-bold text-slate-900">{format(new Date(selectedTransaction.date), 'MMM d, yyyy')}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Reference</p>
-                    <p className="text-sm font-bold text-slate-900 font-mono">{selectedTransaction.referenceNumber}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Supplier</p>
-                    <p className="text-sm font-bold text-slate-900">{selectedTransaction.supplierName}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Debit Amount</p>
-                    <p className="text-lg font-black text-slate-700">{selectedTransaction.debitAmount > 0 ? selectedTransaction.debitAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Credit Amount</p>
-                    <p className="text-lg font-black text-red-600">{selectedTransaction.creditAmount > 0 ? selectedTransaction.creditAmount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Type</p>
-                    <Badge className={GetTypeBadgeVariant(selectedTransaction.type)}>{GetTypeLabel(selectedTransaction.type)}</Badge>
-                  </div>
-                  {selectedTransaction.reason && (
-                    <div className="col-span-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Reason / Note</p>
-                      <p className="text-sm text-slate-700">{selectedTransaction.reason}</p>
-                    </div>
-                  )}
-                  {selectedTransaction.status && (
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Status</p>
-                      <Badge variant="outline">{selectedTransaction.status}</Badge>
-                    </div>
-                  )}
-                  {selectedTransaction.dueDate && (
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Due Date</p>
-                      <p className="text-sm font-bold text-slate-900">{format(new Date(selectedTransaction.dueDate), 'MMM d, yyyy')}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSelectedTransaction(null)} className="rounded-full">
-                  Close
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </SidebarInset>
   );
 }
