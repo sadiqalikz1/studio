@@ -8,6 +8,7 @@ import * as paymentActions from '@/actions/payments';
 import * as supplierActions from '@/actions/suppliers';
 import * as noteActions from '@/actions/notes';
 import * as uploadActions from '@/actions/upload';
+import * as employeeActions from '@/actions/employees';
 
 // ─── Suppliers Service ──────────────────────────────────────────────────────
 
@@ -222,6 +223,87 @@ export const uploadService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to commit upload',
+      };
+    }
+  },
+};
+
+// ─── Employees Service ────────────────────────────────────────────────────
+
+export const employeesService = {
+  async createEmployee(data: any) {
+    try {
+      const result = await employeeActions.createEmployee(data);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create employee',
+      };
+    }
+  },
+
+  async updateEmployee(id: string, data: any) {
+    try {
+      const result = await employeeActions.updateEmployee(id, data);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update employee',
+      };
+    }
+  },
+
+  async deleteEmployee(id: string) {
+    try {
+      const result = await employeeActions.deleteEmployee(id);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete employee',
+      };
+    }
+  },
+
+  async getEmployeeById(id: string) {
+    try {
+      const result = await employeeActions.getEmployeeById(id);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch employee',
+      };
+    }
+  },
+
+  async bulkCreateEmployees(data: any[]) {
+    try {
+      const result = await employeeActions.bulkCreateEmployees(data);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create employees',
+      };
+    }
+  },
+
+  async getEmployees(page = 1, limit = 10, filters?: any) {
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(limit) });
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.status) params.append('status', filters.status);
+
+      const response = await fetch(`/api/employees?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch employees');
+      return await response.json();
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch employees',
       };
     }
   },

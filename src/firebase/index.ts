@@ -4,10 +4,12 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage';
 
 // Cache SDK instances to prevent redundant initialization and potential state corruption
 let authInstance: Auth | null = null;
 let firestoreInstance: Firestore | null = null;
+let storageInstance: ReturnType<typeof getStorage> | null = null;
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -62,10 +64,15 @@ export function getSdks(firebaseApp: FirebaseApp) {
     }
   }
 
+  if (!storageInstance) {
+    storageInstance = getStorage(firebaseApp);
+  }
+
   return {
     firebaseApp,
     auth: authInstance,
-    firestore: firestoreInstance
+    firestore: firestoreInstance,
+    storage: storageInstance,
   };
 }
 
