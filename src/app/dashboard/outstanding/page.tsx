@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
-import { ChevronLeft, Search, Clock, TrendingUp } from 'lucide-react';
-import { format, differenceInDays } from 'date-fns';
+import { ChevronLeft, Search, Wallet, TrendingUp, ChevronRight } from 'lucide-react';
+import { format } from 'date-fns';
 import { useCollection, useMemoFirebase, useFirestore, useUser } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import { useCurrency } from '@/hooks/use-currency';
@@ -16,7 +16,7 @@ import Link from 'next/link';
 
 const ITEMS_PER_PAGE = 15;
 
-export default function DueIn7DaysPage() {
+export default function OutstandingPage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const { formatCurrency } = useCurrency();
@@ -35,17 +35,10 @@ export default function DueIn7DaysPage() {
   }, [firestore, user]);
   const { data: suppliers } = useCollection(suppliersQuery);
 
-  const dueSoonInvoices = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+  const outstandingInvoices = useMemo(() => {
     let filtered = (invoices || []).filter(inv => {
       if (inv.status === 'Paid') return false;
-      if (!inv.dueDate) return false;
-      const dueDate = new Date(inv.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      const diff = differenceInDays(dueDate, today);
-      return diff > 0 && diff <= 7;
+      return true;
     });
 
     if (searchRef) {
@@ -57,20 +50,19 @@ export default function DueIn7DaysPage() {
     return filtered.map(inv => ({
       ...inv,
       supplierName: suppliers?.find(s => s.id === inv.supplierId)?.name || 'Unknown',
-      daysRemaining: differenceInDays(new Date(inv.dueDate), today),
-    })).sort((a, b) => a.daysRemaining - b.daysRemaining);
+    })).sort((a, b) => new Date(b.invoiceDate || b.date).getTime() - new Date(a.invoiceDate || a.date).getTime());
   }, [invoices, suppliers, searchRef]);
 
   const paginatedInvoices = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return dueSoonInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [dueSoonInvoices, currentPage]);
+    return outstandingInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [outstandingInvoices, currentPage]);
 
-  const totalPages = Math.ceil(dueSoonInvoices.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(outstandingInvoices.length / ITEMS_PER_PAGE);
 
   const totalAmount = useMemo(
-    () => dueSoonInvoices.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0),
-    [dueSoonInvoices]
+    () => outstandingInvoices.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0),
+    [outstandingInvoices]
   );
 
   return (
@@ -84,21 +76,21 @@ export default function DueIn7DaysPage() {
           </Button>
         </Link>
         <div className="flex flex-col">
-          <h2 className="text-lg font-bold font-headline text-slate-900 tracking-tight">Due in 7 Days</h2>
-          <p className="text-xs text-slate-500 mt-0.5">{dueSoonInvoices.length} invoices due soon</p>
+          <h2 className="text-lg font-bold font-headline text-slate-900 tracking-tight">Total Outstanding</h2>
+          <p className="text-xs text-slate-500 mt-0.5">{outstandingInvoices.length} unpaid invoices</p>
         </div>
       </header>
 
       <main className="p-4 md:p-8 space-y-6">
         {/* Summary Card */}
-        <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-50">
+        <Card className="border-none shadow-sm ring-1 ring-slate-100 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/5">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Total Amount Due</div>
-                <div className="text-3xl font-black text-blue-700">{formatCurrency(totalAmount)}</div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">Total Outstanding Amount</div>
+                <div className="text-3xl font-black text-primary">{formatCurrency(totalAmount)}</div>
               </div>
-              <Clock className="w-12 h-12 text-blue-400" />
+              <Wallet className="w-12 h-12 text-primary/40" />
             </div>
           </CardContent>
         </Card>
@@ -124,13 +116,13 @@ export default function DueIn7DaysPage() {
           <CardHeader className="pb-4 border-b">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" />
-              Bills Due Soon ({dueSoonInvoices.length})
+              Outstanding Invoices ({outstandingInvoices.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {dueSoonInvoices.length === 0 ? (
+            {outstandingInvoices.length === 0 ? (
               <div className="p-12 text-center">
-                <p className="text-slate-500 text-sm">No bills due in the next 7 days.</p>
+                <p className="text-slate-500 text-sm">No outstanding invoices found.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -143,7 +135,7 @@ export default function DueIn7DaysPage() {
                       <TableHead className="h-12 px-6 text-xs font-bold">Due Date</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold text-right">Amount</TableHead>
                       <TableHead className="h-12 px-6 text-xs font-bold text-right">Remaining</TableHead>
-                      <TableHead className="h-12 px-6 text-xs font-bold">Days Remaining</TableHead>
+                      <TableHead className="h-12 px-6 text-xs font-bold">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -168,8 +160,8 @@ export default function DueIn7DaysPage() {
                           {formatCurrency(inv.remainingBalance || 0)}
                         </TableCell>
                         <TableCell className="px-6 py-4">
-                          <Badge variant="outline" className="text-xs font-bold bg-blue-50 text-blue-700 border-blue-200">
-                            {inv.daysRemaining} days
+                          <Badge variant="outline" className="text-xs font-bold">
+                            {inv.status}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -185,7 +177,7 @@ export default function DueIn7DaysPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-4 bg-white rounded-xl border border-slate-100">
             <div className="text-sm text-slate-600 font-medium">
-              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, dueSoonInvoices.length)} of {dueSoonInvoices.length}
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, outstandingInvoices.length)} of {outstandingInvoices.length}
             </div>
             <div className="flex gap-2">
               <Button

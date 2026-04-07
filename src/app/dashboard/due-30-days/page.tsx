@@ -14,11 +14,14 @@ import { collection } from 'firebase/firestore';
 import { useCurrency } from '@/hooks/use-currency';
 import Link from 'next/link';
 
+const ITEMS_PER_PAGE = 15;
+
 export default function DueIn30DaysPage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const { formatCurrency } = useCurrency();
   const [searchRef, setSearchRef] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const invoicesQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -57,6 +60,13 @@ export default function DueIn30DaysPage() {
       daysRemaining: differenceInDays(new Date(inv.dueDate), today),
     })).sort((a, b) => a.daysRemaining - b.daysRemaining);
   }, [invoices, suppliers, searchRef]);
+
+  const paginatedInvoices = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return dueUpcomingInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [dueUpcomingInvoices, currentPage]);
+
+  const totalPages = Math.ceil(dueUpcomingInvoices.length / ITEMS_PER_PAGE);
 
   const totalAmount = useMemo(
     () => dueUpcomingInvoices.reduce((sum, inv) => sum + (inv.remainingBalance || 0), 0),
@@ -100,7 +110,10 @@ export default function DueIn30DaysPage() {
             <Input
               placeholder="Search by invoice number..."
               value={searchRef}
-              onChange={(e) => setSearchRef(e.target.value)}
+              onChange={(e) => {
+                setSearchRef(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-9 rounded-xl border-slate-200"
             />
           </div>
@@ -134,7 +147,7 @@ export default function DueIn30DaysPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dueUpcomingInvoices.map((inv) => (
+                    {paginatedInvoices.map((inv) => (
                       <TableRow key={inv.id} className="border-b border-slate-50 hover:bg-slate-50">
                         <TableCell className="px-6 py-4 text-sm font-mono font-bold text-slate-700">
                           {inv.invoiceNumber}
@@ -167,6 +180,38 @@ export default function DueIn30DaysPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-4 bg-white rounded-xl border border-slate-100">
+            <div className="text-sm text-slate-600 font-medium">
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, dueUpcomingInvoices.length)} of {dueUpcomingInvoices.length}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <div className="flex items-center px-3 py-1 border border-slate-200 rounded-lg bg-slate-50">
+                <span className="text-sm font-semibold text-slate-700">
+                  {currentPage} / {totalPages}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </main>
     </SidebarInset>
   );

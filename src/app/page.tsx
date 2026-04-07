@@ -11,7 +11,7 @@ import {
   useMemoFirebase,
   useUser
 } from '@/firebase';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import { 
   Select, 
   SelectContent, 
@@ -52,9 +52,9 @@ export default function Dashboard() {
     if (!firestore || !user) return null;
     const invCol = collection(firestore, 'invoices');
     if (selectedBranch !== 'all') {
-      return query(invCol, where('branchId', '==', selectedBranch), limit(100));
+      return query(invCol, where('branchId', '==', selectedBranch));
     }
-    return query(invCol, orderBy('dueDate', 'asc'), limit(100));
+    return invCol;
   }, [firestore, selectedBranch]);
   const { data: invoices, isLoading: invoicesLoading } = useCollection(invoicesQuery);
 
@@ -250,7 +250,7 @@ export default function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoices?.map((inv) => (
+                  {invoices?.slice(0, 10).map((inv) => (
                     <TableRow key={inv.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-mono text-xs font-semibold">{inv.invoiceNumber}</TableCell>
                       <TableCell className="font-medium">

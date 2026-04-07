@@ -41,16 +41,24 @@ export function getSdks(firebaseApp: FirebaseApp) {
   }
 
   if (!firestoreInstance) {
-    // Use initializeFirestore with experimentalForceLongPolling to avoid 'ca9' assertion failures
-    // which are common in certain bundler (Turbopack) and network environments.
+    // Use initializeFirestore with settings to avoid 'ca9' assertion failures
+    // which are common with Turbopack HMR and network environments.
     try {
       firestoreInstance = initializeFirestore(firebaseApp, {
         experimentalForceLongPolling: true,
+        // Disable persistence in development to avoid state corruption during HMR
+        ...(process.env.NODE_ENV === 'development' && { localCache: undefined }),
       });
     } catch (e) {
       // Fallback if initializeFirestore is called multiple times (e.g. during HMR)
-      console.warn('Firestore initialization fallback (potential ID: ca9 fix context):', e);
-      firestoreInstance = getFirestore(firebaseApp);
+      // This handles the "INTERNAL ASSERTION FAILED: Unexpected state (ID: ca9)" error
+      console.warn('Firestore initialization fallback (ca9 handling):', e);
+      try {
+        firestoreInstance = getFirestore(firebaseApp);
+      } catch (e2) {
+        console.error('Failed to get Firestore instance:', e2);
+        throw e2;
+      }
     }
   }
 
